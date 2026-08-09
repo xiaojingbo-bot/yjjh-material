@@ -764,26 +764,36 @@ async function markHandled(id){
   } catch(e){ toast(e.message, true); }
 }
 async function processOutbound(id){
-  if(!confirm('确认出库？系统将扣减对应物料库存，并将该申请标记为「已处理」。')) return;
   try {
     const { data: req, error: e1 } = await sb.from('outbound_requests').select('*').eq('id', id).maybeSingle();
-    if (e1) throw e1;
+    if (e1) throw new Error('查询申请失败：'+e1.message);
     if (!req){ toast('申请不存在', true); return; }
+    // 预检库存
+    const { data: mat } = await sb.from('materials').select('id,name,stock,unit').eq('id', req.material_id).maybeSingle();
+    if (!mat) throw new Error('关联物料「'+req.material_name+'」已在系统中删除，无法出库');
+    const need = Number(req.qty)||0;
+    const have = Number(mat.stock)||0;
+    if (need > have) {
+      const msg = '【库存不足】'+mat.name+' 当前库存 '+have+' '+mat.unit+'，申请数量 '+need+' '+mat.unit+'，无法出库。\n请先通过「入库管理」补充库存后再处理。';
+      toast(msg, true); return;
+    }
+    if(!confirm('确认出库？\n\n物料：'+mat.name+'\n数量：'+need+' '+mat.unit+'\n当前库存：'+have+' '+mat.unit+'\n\n出库后剩余：'+(have-need)+' '+mat.unit)) return;
     const { error: e2 } = await sb.rpc('do_outbound', {
       p_material_id: req.material_id,
       p_type: req.req_type || '领用出库',
       p_qty: req.qty,
       p_date: today(),
       p_receiver: req.applicant_name || req.applicant_email || authName(),
+      p_purpose: req.reason || null,
       p_remark: ('来自出库申请 #'+id+'：'+(req.reason||'')) || null,
     });
-    if (e2) throw e2;
+    if (e2) throw new Error(e2.message || JSON.stringify(e2));
     const { error: e3 } = await sb.from('outbound_requests').update({ status:'handled', handled_at:new Date().toISOString(), handled_by: AUTH.real_name||'' }).eq('id', id);
-    if (e3) throw e3;
-    toast('已出库，申请状态更新为「已处理」');
+    if (e3) throw new Error('更新状态失败：'+e3.message);
+    toast('✅ 已出库 — '+mat.name+' 扣减 '+need+' '+mat.unit+'，剩余 '+(have-need)+' '+mat.unit);
     await loadRequests();
     await loadSnapshot();
-  } catch(e){ toast('出库失败：'+e.message, true); }
+  } catch(e){ toast('❌ 出库失败：'+e.message, true); }
 }
 async function loadWecom(){
   try {
