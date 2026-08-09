@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260809c</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260810a</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -111,7 +111,8 @@
         <button onclick="backupData()">⬇ 备份数据</button>
         <button style="margin-top:8px" onclick="restoreData()">⬆ 恢复数据</button>
       </div>
-      <div class="menu-item" onclick="doLogout()" style="color:#e24b4a;margin-top:8px">⏻ 退出登录</div>
+      <div class="menu-item" id="mi_mypwd" onclick="showMyPwd()" style="margin-top:8px">🔑 修改密码</div>
+      <div class="menu-item" onclick="doLogout()" style="color:#e24b4a">⏻ 退出登录</div>
     </div>
     <div class="main" id="mainView"></div>
   </div>
@@ -207,6 +208,45 @@ async function doLogin(){
   await afterAuth(data.session);
 }
 async function doLogout(){ if(!confirm('确认退出登录？退出后将返回登录界面。')) return; await sb.auth.signOut(); AUTH = { session:null, user:null, role:null, real_name:null }; location.reload(); }
+
+// ---------- 修改自己的密码（所有登录用户，含教师）----------
+function showMyPwd(){
+  const email = (AUTH.user && AUTH.user.email) || '';
+  showModal(`<h4>修改密码</h4>
+    <p class="hint" style="margin-left:0">当前账号：<b>${esc(email)}</b>。为保障安全，需先验证当前密码；修改成功后将自动退出，请用新密码重新登录。</p>
+    <div class="form-row"><label>当前密码</label><input id="mp_old" type="password" placeholder="请输入当前密码"></div>
+    <div class="form-row"><label>新密码</label><input id="mp_new" type="password" placeholder="至少 6 位"></div>
+    <div class="form-row"><label>确认新密码</label><input id="mp_new2" type="password" placeholder="再次输入新密码"></div>
+    <div id="mp_msg" style="font-size:13px;color:#888;min-height:18px;margin-top:4px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn green" id="mp_ok" onclick="doChangeMyPwd()">确认修改</button>
+    </div>`);
+  setTimeout(()=>{ const el=document.getElementById('mp_old'); if(el) el.focus(); }, 60);
+}
+async function doChangeMyPwd(){
+  const oldp = document.getElementById('mp_old').value || '';
+  const p1   = document.getElementById('mp_new').value || '';
+  const p2   = document.getElementById('mp_new2').value || '';
+  const msg  = document.getElementById('mp_msg');
+  const btn  = document.getElementById('mp_ok');
+  const fail = t => { msg.style.color='#e24b4a'; msg.textContent=t; btn.disabled=false; };
+  if(!oldp) return fail('请输入当前密码');
+  if(p1.length < 6) return fail('新密码至少 6 位');
+  if(p1 !== p2) return fail('两次输入的新密码不一致');
+  if(p1 === oldp) return fail('新密码不能与当前密码相同');
+  const email = AUTH.user && AUTH.user.email;
+  if(!email) return fail('登录状态异常，请重新登录后再试');
+  btn.disabled = true; msg.style.color='#888'; msg.textContent='正在验证当前密码…';
+  const { error: e1 } = await sb.auth.signInWithPassword({ email, password: oldp });
+  if(e1) return fail('当前密码不正确，请重新输入');
+  msg.textContent = '正在修改…';
+  const { error: e2 } = await sb.auth.updateUser({ password: p1 });
+  if(e2) return fail('修改失败：' + e2.message);
+  closeModal();
+  toast('密码已修改，即将退出，请用新密码重新登录');
+  setTimeout(async ()=>{ try{ await sb.auth.signOut(); }catch(e){} location.reload(); }, 1800);
+}
 function showApp(){
   document.getElementById('sideUser').textContent = authName() + '（' + (AUTH.role || '未设角色') + '）';
   document.getElementById('loginView').style.display='none';
