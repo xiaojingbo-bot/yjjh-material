@@ -725,6 +725,7 @@ async function submitRequestModal(){
       + '> **申请人**：' + esc(AUTH.real_name || AUTH.email || '未知') + '\n'
       + '> **物资**：' + esc(REQ_MAT.name) + '\n'
       + '> **规格**：' + esc(REQ_MAT.spec || '—') + '\n'
+      + '> **摆放位置**：' + esc(REQ_MAT.location || '未设置') + '\n'
       + '> **类型**：' + esc(type) + '\n'
       + '> **数量**：' + qty + ' ' + esc(REQ_MAT.unit || '') + '\n'
       + '> **期望日期**：' + (date || '—') + '\n'
