@@ -251,11 +251,23 @@ function viewMaterials(){
       <select id="m_status" onchange="filterMaterials()">
         <option value="">全部状态</option><option value="ok">充足</option><option value="warn">库存预警</option><option value="danger">缺货</option>
       </select>
+      <button class="btn" onclick="refreshMaterials()" id="m_refresh_btn">↻ 刷新</button>
       ${isAdmin()?'<button class="btn" style="margin-left:auto" onclick="openAdjustModal()">📊 库存盘点 / 调整</button><button class="btn blue" onclick="viewAdjustLog()">📋 盘点记录</button>':''}
     </div>
     <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th>库存</th><th>安全库存</th><th>状态</th>${isAdmin()?'<th>操作</th>':''}</tr></thead><tbody id="m_body"></tbody></table>`;
   document.getElementById('mainView').innerHTML = html;
   filterMaterials();
+}
+async function refreshMaterials(){
+  const btn = document.getElementById('m_refresh_btn');
+  const old = btn?.innerHTML;
+  if (btn){ btn.disabled = true; btn.innerHTML = '⟳ 刷新中…'; }
+  try {
+    await loadSnapshot();
+    viewMaterials();
+    toast('已刷新物料数据');
+  } catch(e){ toast('刷新失败：' + (e.message || e), true); }
+  finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
 }
 function filterMaterials(){
   const q = (document.getElementById('m_search').value||'').trim().toLowerCase();
