@@ -596,7 +596,9 @@ async function submitOutboundModal(){
       p_material_id: OB_MAT.id, p_type: document.getElementById('ob_type').value, p_qty: qty,
       p_date: document.getElementById('ob_date').value||today(),
       p_receiver: authName(),
+      p_purpose: null,
       p_remark: document.getElementById('ob_remark').value.trim() || null,
+      p_operator: authName(),
     });
     if (error) throw error;
     await loadSnapshot();
@@ -786,6 +788,7 @@ async function processOutbound(id){
       p_receiver: req.applicant_name || req.applicant_email || authName(),
       p_purpose: req.reason || null,
       p_remark: ('来自出库申请 #'+id+'：'+(req.reason||'')) || null,
+      p_operator: AUTH.real_name || authName(),
     });
     if (e2) throw new Error(e2.message || JSON.stringify(e2));
     const { error: e3 } = await sb.from('outbound_requests').update({ status:'handled', handled_at:new Date().toISOString(), handled_by: AUTH.real_name||'' }).eq('id', id);
