@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>库存查看 · 优佳宏锦职业培训学校</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,6 +31,20 @@
   .empty { text-align:center; color:#999; font-size:13px; padding:18px; }
   .err { background:#fdeaea; color:#e24b4a; padding:14px; border-radius:10px; font-size:13px; }
   .foot { text-align:center; color:#aaa; font-size:11px; margin-top:8px; }
+  /* 教师登录 / 修改密码 */
+  .btn { padding:8px 14px; border:none; border-radius:7px; font-size:13px; cursor:pointer; background:#0c447c; color:#fff; }
+  .btn.blue { background:#2f6fed; } .btn.green { background:#1d9e75; } .btn.red { background:#e24b4a; }
+  .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal-mask.show { display:flex; }
+  .modal { background:#fff; border-radius:12px; padding:22px 24px; width:420px; max-width:92vw; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+  .modal h4 { margin-bottom:14px; color:#0c447c; }
+  .modal .hint { margin-left:0; }
+  .form-row { display:flex; align-items:center; margin-bottom:12px; }
+  .form-row label { width:80px; color:#555; font-size:13px; flex-shrink:0; }
+  .form-row input { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:7px; font-size:13px; }
+  .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  #vtoast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:8px; font-size:14px; z-index:99; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #vtoast.show { opacity:.95; } #vtoast.err { background:#e24b4a; }
 </style>
 </head>
 <body>
@@ -39,6 +54,7 @@
   </div>
   <div class="bar">
     <span id="upd">加载中…</span>
+    <span id="authArea"></span>
     <button onclick="load(true)">↻ 刷新</button>
   </div>
   <div class="cards" id="cards"></div>
@@ -51,6 +67,8 @@
     <table><thead><tr><th>日期</th><th>物料</th><th>类型</th><th>数量</th><th>经办</th></thead><tbody id="ib"></tbody></table>
   </section>
   <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新</div>
+
+  <div class="modal-mask" id="vmask"><div class="modal" id="vmodal"></div></div>
 
 <script>
 // ---------- Supabase 配置（部署前由我填入真实值，须与 index.html 一致）----------
@@ -76,6 +94,7 @@ async function load(manual){
     document.getElementById('cards').innerHTML = '<div class="err" style="grid-column:1/-1">无访问权限：请使用教务主任分享的「带口令链接」打开本页。</div>';
     document.getElementById('mt').innerHTML = '';
     document.getElementById('ib').innerHTML = '';
+    document.getElementById('authArea').innerHTML = '';
     return;
   }
   try {
@@ -89,6 +108,7 @@ async function load(manual){
     const inbound = (ib.data || []).sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||0)-(a.id||0));
     render({ materials: m.data || [], inbound });
     document.getElementById('upd').textContent = '更新于 ' + new Date().toLocaleString('zh-CN');
+    renderAuth();
   } catch(e){
     if (manual) alert(e.message);
     document.getElementById('cards').innerHTML = '<div class="err" style="grid-column:1/-1">'+esc(e.message)+'</div>';
@@ -113,7 +133,86 @@ function render(d){
   }).join('') : '<tr><td colspan="5" class="empty">近 7 天暂无入库记录</td></tr>';
 }
 load(false);
+initAuth();
 setInterval(()=>load(false), 30000);
+
+// ---------- 教师登录 / 修改密码 ----------
+let TEACHER = null;
+function showV(html){ document.getElementById('vmodal').innerHTML = html; document.getElementById('vmask').classList.add('show'); }
+function closeV(){ document.getElementById('vmask').classList.remove('show'); }
+let vtoastT = null;
+function vtoast(m, err){
+  let el = document.getElementById('vtoast');
+  if(!el){ el = document.createElement('div'); el.id='vtoast'; document.body.appendChild(el); }
+  el.textContent = m; el.className = 'show' + (err?' err':'');
+  clearTimeout(vtoastT); vtoastT = setTimeout(()=>{ el.className=''; }, 2400);
+}
+async function initAuth(){
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session){ const { data: { user } } = await sb.auth.getUser(); TEACHER = user; }
+  } catch(e){}
+  renderAuth();
+}
+function renderAuth(){
+  const el = document.getElementById('authArea');
+  if(!el) return;
+  if (TEACHER){
+    const name = (TEACHER.user_metadata && TEACHER.user_metadata.real_name) || TEACHER.email;
+    el.innerHTML = '<span style="margin-right:8px;color:#0c447c">👤 '+esc(name)+'</span>'
+      + '<button class="btn blue" onclick="showChangePwd()">修改密码</button>'
+      + '<button class="btn red" onclick="teacherLogout()">退出</button>';
+  } else {
+    el.innerHTML = '<button class="btn" onclick="showLogin()">教师登录</button>';
+  }
+}
+function showLogin(){
+  showV('<h4>教师登录</h4>'
+    + '<p class="hint" style="margin-left:0">使用教务主任分配的账号（邮箱 + 密码）登录，登录后可修改自己的密码。</p>'
+    + '<div class="form-row"><label>邮箱</label><input id="lg_email" placeholder="如 wang@yjjh.edu"></div>'
+    + '<div class="form-row"><label>密码</label><input id="lg_pwd2" type="password" placeholder="密码"></div>'
+    + '<div id="lg_msg" style="font-size:13px;color:#e24b4a;min-height:18px"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn blue" onclick="doTeacherLogin()">登录</button></div>');
+}
+async function doTeacherLogin(){
+  const email = document.getElementById('lg_email').value.trim();
+  const pwd = document.getElementById('lg_pwd2').value;
+  const msg = document.getElementById('lg_msg');
+  if(!email || !pwd){ msg.textContent='请填写邮箱与密码'; return; }
+  msg.textContent='登录中…';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  if(error){ msg.textContent = error.message; return; }
+  TEACHER = data.user;
+  closeV();
+  renderAuth();
+  vtoast('已登录，可在此修改密码');
+}
+function showChangePwd(){
+  showV('<h4>修改密码</h4>'
+    + '<p class="hint" style="margin-left:0">请输入新密码（至少 6 位），修改后请使用新密码重新登录。</p>'
+    + '<div class="form-row"><label>新密码</label><input id="cp_pwd" type="password" placeholder="新密码（≥6位）"></div>'
+    + '<div class="form-row"><label>确认密码</label><input id="cp_pwd2" type="password" placeholder="再次输入"></div>'
+    + '<div id="cp_msg" style="font-size:13px;color:#e24b4a;min-height:18px"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn green" onclick="doChangePwd()">确认修改</button></div>');
+}
+async function doChangePwd(){
+  const p1 = document.getElementById('cp_pwd').value;
+  const p2 = document.getElementById('cp_pwd2').value;
+  const msg = document.getElementById('cp_msg');
+  if(p1.length < 6){ msg.textContent='新密码至少 6 位'; return; }
+  if(p1 !== p2){ msg.textContent='两次输入不一致'; return; }
+  msg.textContent='修改中…';
+  const { data, error } = await sb.auth.updateUser({ password: p1 });
+  if(error){ msg.textContent = error.message; return; }
+  closeV();
+  vtoast('密码已修改，请使用新密码重新登录');
+}
+async function teacherLogout(){
+  await sb.auth.signOut();
+  TEACHER = null;
+  renderAuth();
+  vtoast('已退出登录');
+}
 </script>
 </body>
 </html>
