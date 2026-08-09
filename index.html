@@ -102,7 +102,7 @@
       <div class="logo"><img src="img/logo.png" alt="logo">物料管理系统</div>
       <div class="user" id="sideUser"></div>
       <div class="menu-item active" data-view="materials" onclick="switchView('materials')">📦 物料管理</div>
-      <div class="menu-item" data-view="inbound" onclick="switchView('inbound')">⬇ 入库管理</div>
+      <div class="menu-item" id="mi_inbound" data-view="inbound" onclick="switchView('inbound')">⬇ 入库管理</div>
       <div class="menu-item" id="mi_outbound" data-view="outbound" onclick="switchView('outbound')">⬆ 出库管理</div>
       <div class="menu-item" data-view="requests" id="mi_requests" onclick="switchView('requests')" style="display:none">📨 出库申请</div>
       <div class="menu-item" data-view="accounts" id="mi_accounts" onclick="switchView('accounts')" style="display:none">👤 账户管理</div>
@@ -214,6 +214,7 @@ function showApp(){
   document.getElementById('mi_accounts').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
   document.getElementById('mi_outbound').style.display = isAdmin() ? 'block' : 'none';
+  document.getElementById('mi_inbound').style.display = isAdmin() ? 'block' : 'none';
   switchView('materials');
   // 深链支持：?view=requests 直接进入出库申请视图
   const dv = new URLSearchParams(location.search).get('view');
@@ -357,7 +358,7 @@ function viewAdjustLog(){
 function viewInbound(){
   let html = `<h3>入库管理 · 登记入库 / 新增物料 / 批量导入</h3>
     <p class="hint">选择已有物料登记入库；或点「新增物料」创建物料并录入首笔入库量；或点「批量导入」下载模板后批量导入（系统自动按名称匹配、自动生成编号与日期）。</p>
-    ${canWriteTxn()? `
+    ${isAdmin()? `
     <div class="panel">
       <h4>登记入库（已有物料）</h4>
       <div class="toolbar">
