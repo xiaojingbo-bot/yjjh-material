@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>库存查看 · 优佳宏锦职业培训学校</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #1f2329; padding: 14px; }
+  .head { background: linear-gradient(135deg,#0c447c,#1d9e75); color:#fff; border-radius: 12px; padding: 18px 16px; margin-bottom: 14px; }
+  .head h1 { font-size: 18px; }
+  .head p { font-size: 12px; opacity: .9; margin-top: 4px; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin: 4px 2px 12px; font-size:12px; color:#888; }
+  .bar button { padding:6px 12px; border:none; border-radius:7px; background:#0c447c; color:#fff; font-size:13px; }
+  .cards { display:flex; gap:10px; margin-bottom:14px; }
+  .card { flex:1; background:#fff; border-radius:10px; padding:14px 10px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .card .n { font-size:22px; font-weight:700; color:#0c447c; }
+  .card .l { font-size:11px; color:#888; margin-top:3px; }
+  .card.warn .n { color:#e08a00; }
+  section { background:#fff; border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  section h2 { font-size:15px; color:#0c447c; margin-bottom:10px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { padding:8px 6px; font-size:12px; text-align:left; border-bottom:1px solid #eee; }
+  th { color:#888; font-weight:600; background:#fafbfc; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
+  .tag.ok { background:#e6f7ee; color:#1d9e75; }
+  .tag.warn { background:#fff3e0; color:#e08a00; }
+  .tag.danger { background:#fdeaea; color:#e24b4a; }
+  .empty { text-align:center; color:#999; font-size:13px; padding:18px; }
+  .err { background:#fdeaea; color:#e24b4a; padding:14px; border-radius:10px; font-size:13px; }
+  .foot { text-align:center; color:#aaa; font-size:11px; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>优佳宏锦职业培训学校</h1>
+    <p>物料库存 · 教师只读视图（实时同步）</p>
+  </div>
+  <div class="bar">
+    <span id="upd">加载中…</span>
+    <button onclick="load(true)">↻ 刷新</button>
+  </div>
+  <div class="cards" id="cards"></div>
+  <section>
+    <h2>📦 物料库存</h2>
+    <table><thead><tr><th>编号</th><th>名称</th><th>规格</th><th>位置</th><th>库存</th><th>状态</th></thead><tbody id="mt"></tbody></table>
+  </section>
+  <section>
+    <h2>⬇ 最近 7 天入库</h2>
+    <table><thead><tr><th>日期</th><th>物料</th><th>类型</th><th>数量</th><th>经办</th></thead><tbody id="ib"></tbody></table>
+  </section>
+  <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新</div>
+
+<script>
+// ---------- Supabase 配置（部署前由我填入真实值，须与 index.html 一致）----------
+const SUPABASE_URL = 'https://mjucegnphdjpuxiyowrb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_wu__otFoGZ7rw581vmdFxA_IpYWaRI9';
+const SHARE_KEY = 'yjjh2026'; // 教师只读分享口令，须与 index.html 一致
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function key(){ return new URL(location.href).searchParams.get('key') || ''; }
+function statusOf(s, safe){ if (s<=0) return {c:'danger',t:'缺货'}; if (s<safe) return {c:'warn',t:'预警'}; return {c:'ok',t:'充足'}; }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// 计算本地时区的“7 天前”日期（YYYY-MM-DD），用于过滤入库
+function since7(){
+  const d = new Date(); d.setDate(d.getDate() - 7);
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
+
+async function load(manual){
+  // 口令校验（仅做入口遮挡，真正的数据安全由 Supabase 行级权限保障：教师只读、不可写）
+  if (key() !== SHARE_KEY){
+    document.getElementById('cards').innerHTML = '<div class="err" style="grid-column:1/-1">无访问权限：请使用教务主任分享的「带口令链接」打开本页。</div>';
+    document.getElementById('mt').innerHTML = '';
+    document.getElementById('ib').innerHTML = '';
+    return;
+  }
+  try {
+    const [m, ib] = await Promise.all([
+      sb.from('materials').select('*').order('id', { ascending: true }),
+      sb.from('inbound').select('*').gte('date', since7()),
+    ]);
+    if (m.error) throw m.error;
+    if (ib.error) throw ib.error;
+    // 仅展示最近 7 天入库，按日期倒序、同日按 id 倒序
+    const inbound = (ib.data || []).sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||0)-(a.id||0));
+    render({ materials: m.data || [], inbound });
+    document.getElementById('upd').textContent = '更新于 ' + new Date().toLocaleString('zh-CN');
+  } catch(e){
+    if (manual) alert(e.message);
+    document.getElementById('cards').innerHTML = '<div class="err" style="grid-column:1/-1">'+esc(e.message)+'</div>';
+  }
+}
+function render(d){
+  const mats = d.materials || [];
+  const warns = mats.filter(m=>m.stock < (m.safety_stock||0)).length;
+  const total = mats.reduce((s,m)=>s+(Number(m.stock)||0),0);
+  document.getElementById('cards').innerHTML =
+    `<div class="card"><div class="n">${mats.length}</div><div class="l">物料种类</div></div>`+
+    `<div class="card"><div class="n">${total}</div><div class="l">库存总量</div></div>`+
+    `<div class="card ${warns?'warn':''}"><div class="n">${warns}</div><div class="l">预警数</div></div>`;
+  document.getElementById('mt').innerHTML = mats.length ? mats.map(m=>{
+    const s = statusOf(m.stock, m.safety_stock||0);
+    return `<tr><td>${esc(m.code)}</td><td>${esc(m.name)}</td><td>${esc(m.spec)}</td><td>${esc(m.location)}</td><td><b>${m.stock}</b></td><td><span class="tag ${s.c}">${s.t}</span></td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="empty">暂无物料</td></tr>';
+  const ib = (d.inbound||[]);
+  document.getElementById('ib').innerHTML = ib.length ? ib.map(r=>{
+    const mat = (d.materials||[]).find(x=>x.id===r.material_id)||{};
+    return `<tr><td>${esc(r.date)}</td><td>${esc(mat.name)}</td><td>${esc(r.type)}</td><td><b>+${r.qty}</b></td><td>${esc(r.handler)}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty">近 7 天暂无入库记录</td></tr>';
+}
+load(false);
+setInterval(()=>load(false), 30000);
+</script>
+</body>
+</html>
