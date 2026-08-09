@@ -715,12 +715,13 @@ async function submitRequestModal(){
   const reason=document.getElementById('rq_reason').value.trim()||null;
   const remark=document.getElementById('rq_remark').value.trim()||null;
   try {
-    const { error } = await sb.from('outbound_requests').insert({
+    const { data: ins, error } = await sb.from('outbound_requests').insert({
       material_id: REQ_MAT.id, material_name: REQ_MAT.name, material_spec: REQ_MAT.spec||null,
       material_code: REQ_MAT.code||null, unit: REQ_MAT.unit||null, qty,
       reason, req_type: type, req_date: date, remark
-    });
+    }).select().single();
     if (error) throw error;
+    const approveUrl = 'https://mjucegnphdjpuxiyowrb.supabase.co/functions/v1/approve-request?req=' + ins.id + '&tok=' + (ins.approve_token || '');
     const content = '## 📦 出库申请通知\n'
       + '> **申请人**：' + esc(AUTH.real_name || AUTH.email || '未知') + '\n'
       + '> **物资**：' + esc(REQ_MAT.name) + '\n'
@@ -731,8 +732,9 @@ async function submitRequestModal(){
       + '> **期望日期**：' + (date || '—') + '\n'
       + '> **用途**：' + esc(reason || '（未填写）') + '\n'
       + '> **提交时间**：' + new Date().toLocaleString('zh-CN') + '\n'
-      + '> [👉 点击进入系统处理申请](https://xiaojingbo-bot.github.io/yjjh-material/?view=requests)\n'
-      + '> 登录后在「出库申请」中点击「出库」即可处理。';
+      + '> [✅ 一键出库（无需进系统，点此直接扣库存）](' + approveUrl + ')\n'
+      + '> [👉 或点击进入系统处理申请](https://xiaojingbo-bot.github.io/yjjh-material/?view=requests)\n'
+      + '> 链接含专属审批令牌，仅本人可操作，可放心点击。';
     const pushed = await pushWecom(content);
     closeModal();
     toast(pushed ? '申请已提交，教务主任企业微信已收到通知' : '申请已提交（未配置企业微信通知）', !pushed);
