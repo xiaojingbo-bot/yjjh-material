@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260810d</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260810e</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -106,6 +106,7 @@
       <div class="menu-item" id="mi_inbound" data-view="inbound" onclick="switchView('inbound')">⬇ 入库管理</div>
       <div class="menu-item" id="mi_outbound" data-view="outbound" onclick="switchView('outbound')">⬆ 出库管理</div>
       <div class="menu-item" data-view="requests" id="mi_requests" onclick="switchView('requests')" style="display:none">📨 出库申请</div>
+      <div class="menu-item" data-view="purchase" id="mi_purchase" onclick="switchView('purchase')" style="display:none">🛒 采购申请</div>
       <div class="menu-item" data-view="accounts" id="mi_accounts" onclick="switchView('accounts')" style="display:none">👤 账户管理</div>
       <div class="backup" id="backupPanel">
         <button onclick="backupData()">⬇ 备份数据</button>
@@ -254,12 +255,13 @@ function showApp(){
   document.getElementById('backupPanel').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_accounts').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
+  document.getElementById('mi_purchase').style.display = canWriteTxn() ? 'block' : 'none';
   document.getElementById('mi_outbound').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_inbound').style.display = isAdmin() ? 'block' : 'none';
   switchView('materials');
-  // 深链支持：?view=requests 直接进入出库申请视图
+  // 深链支持：?view=requests / ?view=purchase 直接进入对应视图
   const dv = new URLSearchParams(location.search).get('view');
-  if (dv && ['materials','inbound','outbound','accounts','requests'].includes(dv)) switchView(dv);
+  if (dv && ['materials','inbound','outbound','accounts','requests','purchase'].includes(dv)) switchView(dv);
 }
 
 // ---------- 视图切换 ----------
@@ -274,6 +276,7 @@ function switchView(v){
   else if (v==='outbound') viewOutbound();
   else if (v==='accounts') viewAccounts();
   else if (v==='requests') viewRequests();
+  else if (v==='purchase') viewPurchase();
 }
 
 // ---------- 物料管理（只读台账）----------
@@ -898,6 +901,201 @@ async function testWecom(){
       ? '<span style="color:#2e7d32">✅ 测试消息已发送，请查看企业微信</span>'
       : '<span style="color:#e24b4a">发送失败：'+esc((data&&data.msg)||resp.status)+'</span>';
   } catch(e){ msg.innerHTML = '<span style="color:#e24b4a">请求异常：'+esc(e.message)+'</span>'; }
+}
+
+// ---------- 采购申请 / 采购计划 ----------
+const PR_STATUS = {
+  pending:   { label:'待审核', cls:'warn' },
+  approved:  { label:'已批准', cls:'ok'   },
+  purchased: { label:'已采购', cls:'ok'   },
+  rejected:  { label:'已驳回', cls:'danger' }
+};
+let PR_CACHE = [];
+
+async function viewPurchase(){
+  const amAdmin = isAdmin();
+  let html = amAdmin
+    ? `<h3>🛒 采购计划</h3><p class="hint">汇总全校教师提交的采购申请，可审核状态并一键导出 Excel 交给行政采购。</p>`
+    : `<h3>🛒 采购申请</h3><p class="hint">需要购买新物品时在此提交申请，提交后自动推送到教务主任的<b>企业微信</b>；下方可查看自己的申请进度。</p>`;
+
+  html += `<div class="cards" id="pr_cards"></div>
+    <div class="toolbar">
+      <button class="btn green" onclick="openPurchaseModal()">➕ 新增采购申请</button>
+      <select id="pr_filter" onchange="renderPurchase()" style="width:130px">
+        <option value="">全部状态</option>
+        <option value="pending">待审核</option>
+        <option value="approved">已批准</option>
+        <option value="purchased">已采购</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <input id="pr_search" placeholder="🔍 搜索物品 / 型号 / 申请人" oninput="renderPurchase()" style="width:220px">
+      <button class="btn" onclick="loadPurchase()">↻ 刷新</button>
+      ${amAdmin?'<button class="btn blue" onclick="exportPurchase()">⬇ 导出采购单（Excel）</button>':''}
+    </div>
+    <table><thead><tr>
+      <th>提交时间</th><th>申请人</th><th>物品名称</th><th>型号/规格</th><th>数量</th>
+      <th>期望到货</th><th>预估单价</th><th>购买链接</th><th>用途</th><th>状态</th>${amAdmin?'<th>操作</th>':''}
+    </tr></thead><tbody id="pr_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  await loadPurchase();
+}
+
+async function loadPurchase(){
+  const body = document.getElementById('pr_body');
+  if (body) body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;padding:16px">加载中…</td></tr>';
+  try {
+    const { data, error } = await sb.from('purchase_requests').select('*').order('created_at',{ascending:false});
+    if (error) throw error;
+    PR_CACHE = data || [];
+    renderPurchase();
+  } catch(e){
+    if (body) body.innerHTML = '<tr><td colspan="11" style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</td></tr>';
+  }
+}
+
+function renderPurchase(){
+  const body = document.getElementById('pr_body'); if(!body) return;
+  const amAdmin = isAdmin();
+  const fs = (document.getElementById('pr_filter')||{}).value || '';
+  const q  = ((document.getElementById('pr_search')||{}).value || '').trim().toLowerCase();
+  let rows = PR_CACHE.filter(r => (!fs || r.status===fs));
+  if (q) rows = rows.filter(r => [r.item_name,r.model,r.applicant_name,r.reason].some(v=>(v||'').toLowerCase().includes(q)));
+
+  // 顶部统计卡片
+  const cards = document.getElementById('pr_cards');
+  if (cards){
+    const cnt = s => PR_CACHE.filter(r=>r.status===s).length;
+    cards.innerHTML = `
+      <div class="card"><div class="n">${PR_CACHE.length}</div><div class="l">申请总数</div></div>
+      <div class="card"><div class="n" style="color:#e08a00">${cnt('pending')}</div><div class="l">待审核</div></div>
+      <div class="card"><div class="n" style="color:#1d9e75">${cnt('approved')}</div><div class="l">已批准待采购</div></div>
+      <div class="card"><div class="n">${cnt('purchased')}</div><div class="l">已采购</div></div>`;
+  }
+
+  const colspan = amAdmin ? 11 : 10;
+  body.innerHTML = rows.map(r=>{
+    const st = PR_STATUS[r.status] || { label:r.status, cls:'' };
+    const link = r.buy_url ? `<a href="${esc(r.buy_url)}" target="_blank" rel="noopener" style="color:#2f6fed">打开链接</a>` : '<span style="color:#bbb">—</span>';
+    let ops = '<span style="color:#999">—</span>';
+    if (amAdmin){
+      if (r.status==='pending')       ops = `<button class="btn sm green" onclick="setPurchaseStatus(${r.id},'approved')">批准</button> <button class="btn sm red" onclick="setPurchaseStatus(${r.id},'rejected')">驳回</button>`;
+      else if (r.status==='approved') ops = `<button class="btn sm blue" onclick="setPurchaseStatus(${r.id},'purchased')">标记已采购</button>`;
+      else                            ops = `<button class="btn sm" onclick="setPurchaseStatus(${r.id},'pending')">重置为待审</button>`;
+    }
+    return `<tr>
+      <td>${esc((r.created_at||'').replace('T',' ').slice(0,16))}</td>
+      <td>${esc(r.applicant_name||r.applicant_email||'')}</td>
+      <td><b>${esc(r.item_name||'')}</b></td>
+      <td>${esc(r.model||'—')}</td>
+      <td><b>${r.qty}</b> ${esc(r.unit||'')}</td>
+      <td>${esc(r.expect_date||'—')}</td>
+      <td>${r.est_price!=null?('¥'+r.est_price):'—'}</td>
+      <td>${link}</td>
+      <td>${esc(r.reason||'—')}</td>
+      <td><span class="tag ${st.cls}">${st.label}</span></td>
+      ${amAdmin?`<td>${ops}</td>`:''}
+    </tr>`;
+  }).join('') || `<tr><td colspan="${colspan}" style="text-align:center;color:#999;padding:20px">暂无采购申请</td></tr>`;
+}
+
+function openPurchaseModal(){
+  showModal(`<h4>提交采购申请</h4>
+    <div class="form-row"><label>物品名称 <span style="color:#e24b4a">*</span></label><input id="pu_name" placeholder="如：数字万用表" autocomplete="off"></div>
+    <div class="form-row"><label>型号 / 规格</label><input id="pu_model" placeholder="如：福禄克 15B+"></div>
+    <div class="form-row"><label>数量 <span style="color:#e24b4a">*</span></label><input id="pu_qty" type="number" min="1" step="1" placeholder="请输入数量"></div>
+    <div class="form-row"><label>单位</label><input id="pu_unit" placeholder="台 / 个 / 套 / 箱" value="个"></div>
+    <div class="form-row"><label>期望到货时间</label><input id="pu_date" type="date"></div>
+    <div class="form-row"><label>预估单价（元）</label><input id="pu_price" type="number" min="0" step="0.01" placeholder="可不填"></div>
+    <div class="form-row"><label>购买链接</label><input id="pu_url" placeholder="https://… 商品页链接（可不填）"></div>
+    <div class="form-row"><label>用途说明</label><input id="pu_reason" placeholder="如：电工实训课学生分组使用"></div>
+    <div class="form-row"><label>备注</label><input id="pu_remark" placeholder="其他说明（可不填）"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitPurchase()">提交申请</button></div>`);
+}
+
+async function submitPurchase(){
+  const name  = (document.getElementById('pu_name').value||'').trim();
+  const qty   = parseFloat(document.getElementById('pu_qty').value);
+  if(!name){ alert('请填写物品名称'); return; }
+  if(!qty || qty<=0){ alert('请输入有效的采购数量'); return; }
+  const model  = (document.getElementById('pu_model').value||'').trim()  || null;
+  const unit   = (document.getElementById('pu_unit').value||'').trim()   || null;
+  const date   = document.getElementById('pu_date').value || null;
+  const priceV = parseFloat(document.getElementById('pu_price').value);
+  const price  = isNaN(priceV) ? null : priceV;
+  let url      = (document.getElementById('pu_url').value||'').trim() || null;
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const reason = (document.getElementById('pu_reason').value||'').trim() || null;
+  const remark = (document.getElementById('pu_remark').value||'').trim() || null;
+
+  try {
+    const { error } = await sb.from('purchase_requests').insert({
+      item_name:name, model, qty, unit, expect_date:date, est_price:price,
+      buy_url:url, reason, remark
+    });
+    if (error) throw error;
+
+    const content = '## 🛒 采购申请通知\n'
+      + '> **申请人**：' + esc(AUTH.real_name || AUTH.email || '未知') + '\n'
+      + '> **物品名称**：' + esc(name) + '\n'
+      + '> **型号规格**：' + esc(model || '—') + '\n'
+      + '> **数量**：' + qty + ' ' + esc(unit || '') + '\n'
+      + '> **期望到货**：' + (date || '—') + '\n'
+      + (price!=null ? '> **预估单价**：¥' + price + '（合计约 ¥' + (price*qty).toFixed(2) + '）\n' : '')
+      + '> **用途**：' + esc(reason || '（未填写）') + '\n'
+      + (remark ? '> **备注**：' + esc(remark) + '\n' : '')
+      + (url ? '> **购买链接**：[点此查看商品](' + url + ')\n' : '')
+      + '> **提交时间**：' + new Date().toLocaleString('zh-CN') + '\n'
+      + '> [👉 进入系统查看采购计划](https://xiaojingbo-bot.github.io/yjjh-material/?view=purchase)';
+    const pushed = await pushWecom(content);
+    closeModal();
+    toast(pushed ? '采购申请已提交，教务主任企业微信已收到通知' : '采购申请已提交（未配置企业微信通知）', !pushed);
+    await loadPurchase();
+  } catch(e){ toast('提交失败：'+e.message, true); }
+}
+
+async function setPurchaseStatus(id, status){
+  const labels = { approved:'批准', rejected:'驳回', purchased:'标记为已采购', pending:'重置为待审核' };
+  if(!confirm('确认将该申请「' + labels[status] + '」？')) return;
+  try {
+    const { error } = await sb.from('purchase_requests')
+      .update({ status, handled_at:new Date().toISOString(), handled_by: AUTH.real_name || AUTH.email || '' })
+      .eq('id', id);
+    if (error) throw error;
+    toast('已' + labels[status]);
+    await loadPurchase();
+  } catch(e){ toast('操作失败：'+e.message, true); }
+}
+
+function exportPurchase(){
+  ensureXLSX();
+  const fs = (document.getElementById('pr_filter')||{}).value || '';
+  const q  = ((document.getElementById('pr_search')||{}).value || '').trim().toLowerCase();
+  let rows = PR_CACHE.filter(r => (!fs || r.status===fs));
+  if (q) rows = rows.filter(r => [r.item_name,r.model,r.applicant_name,r.reason].some(v=>(v||'').toLowerCase().includes(q)));
+  if(!rows.length){ toast('当前筛选结果为空，无可导出内容', true); return; }
+
+  let total = 0;
+  const recs = rows.map((r,i)=>{
+    const sub = (r.est_price!=null) ? Number(r.est_price)*Number(r.qty) : null;
+    if (sub!=null) total += sub;
+    return [ i+1, r.item_name||'', r.model||'', Number(r.qty)||0, r.unit||'',
+             r.est_price!=null?Number(r.est_price):'', sub!=null?Number(sub.toFixed(2)):'',
+             r.expect_date||'', r.buy_url||'', r.reason||'',
+             r.applicant_name||r.applicant_email||'',
+             (r.created_at||'').replace('T',' ').slice(0,16),
+             (PR_STATUS[r.status]||{label:r.status}).label, r.remark||'' ];
+  });
+  recs.push(['','合计','','','','', Number(total.toFixed(2)), '','','','','','','']);
+
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['序号','物品名称','型号/规格','数量','单位','预估单价(元)','预估小计(元)','期望到货','购买链接','用途说明','申请人','提交时间','状态','备注'],
+    ...recs
+  ]);
+  ws['!cols'] = [{wch:5},{wch:20},{wch:18},{wch:7},{wch:6},{wch:12},{wch:13},{wch:12},{wch:34},{wch:22},{wch:10},{wch:17},{wch:9},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '采购计划');
+  XLSX.writeFile(wb, '采购计划_' + today() + '.xlsx');
+  toast('已导出 ' + rows.length + ' 条采购申请');
 }
 
 // ---------- 备份 / 恢复 ----------
