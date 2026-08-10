@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260811a</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260811b</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -256,7 +256,9 @@ function showApp(){
   document.getElementById('backupPanel').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_accounts').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
-  document.getElementById('mi_purchase').style.display = canWriteTxn() ? 'block' : 'none';
+  const miPur = document.getElementById('mi_purchase');
+  miPur.style.display = canWriteTxn() ? 'block' : 'none';
+  miPur.textContent = isAdmin() ? '🛒 采购计划' : '🛒 采购申请';
   document.getElementById('mi_outbound').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_inbound').style.display = isAdmin() ? 'block' : 'none';
   switchView('materials');
@@ -905,28 +907,30 @@ async function testWecom(){
 }
 
 // ---------- 采购申请 / 采购计划 ----------
+// 采购申请只有两个状态：已申请 / 已驳回（无需审批流程，提交即生效，仅作知会）
 const PR_STATUS = {
-  pending:   { label:'待审核', cls:'warn' },
-  approved:  { label:'已批准', cls:'ok'   },
-  purchased: { label:'已采购', cls:'ok'   },
-  rejected:  { label:'已驳回', cls:'danger' }
+  submitted: { label:'已申请', cls:'ok'     },
+  rejected:  { label:'已驳回', cls:'danger' },
+  // 兼容历史数据（旧流程遗留状态，一律按「已申请」显示）
+  pending:   { label:'已申请', cls:'ok'     },
+  approved:  { label:'已申请', cls:'ok'     },
+  purchased: { label:'已申请', cls:'ok'     }
 };
+const isRejected = r => r && r.status === 'rejected';
 let PR_CACHE = [];
 
 async function viewPurchase(){
   const amAdmin = isAdmin();
   let html = amAdmin
-    ? `<h3>🛒 采购计划</h3><p class="hint">汇总全校教师提交的采购申请，可审核状态并一键导出 Excel 交给行政采购。</p>`
-    : `<h3>🛒 采购申请</h3><p class="hint">需要购买新物品时在此提交申请，提交后自动推送到教务主任的<b>企业微信</b>；下方可查看自己的申请进度。</p>`;
+    ? `<h3>🛒 采购计划</h3><p class="hint">汇总全校教师提交的采购申请（<b>无需审批，提交即成立</b>，仅作知会）。如确实不需要采购，可将该条<b>驳回</b>；一键导出 Excel 交给行政采购。</p>`
+    : `<h3>🛒 采购申请</h3><p class="hint">需要购买新物品时在此提交申请，<b>提交即成立、无需等待审批</b>，同时自动推送到教务主任的<b>企业微信</b>。下方为<b>全校老师</b>的采购申请，可查看是否已有同事申请过同款物品，避免重复采购。</p>`;
 
   html += `<div class="cards" id="pr_cards"></div>
     <div class="toolbar">
       <button class="btn green" onclick="openPurchaseModal()">➕ 新增采购申请</button>
       <select id="pr_filter" onchange="renderPurchase()" style="width:130px">
         <option value="">全部状态</option>
-        <option value="pending">待审核</option>
-        <option value="approved">已批准</option>
-        <option value="purchased">已采购</option>
+        <option value="submitted">已申请</option>
         <option value="rejected">已驳回</option>
       </select>
       <input id="pr_search" placeholder="🔍 搜索物品 / 型号 / 申请人" oninput="renderPurchase()" style="width:220px">
@@ -959,18 +963,20 @@ function renderPurchase(){
   const amAdmin = isAdmin();
   const fs = (document.getElementById('pr_filter')||{}).value || '';
   const q  = ((document.getElementById('pr_search')||{}).value || '').trim().toLowerCase();
-  let rows = PR_CACHE.filter(r => (!fs || r.status===fs));
+  let rows = PR_CACHE.filter(r => !fs || (fs==='rejected' ? isRejected(r) : !isRejected(r)));
   if (q) rows = rows.filter(r => [r.item_name,r.model,r.applicant_name,r.reason].some(v=>(v||'').toLowerCase().includes(q)));
 
   // 顶部统计卡片
   const cards = document.getElementById('pr_cards');
   if (cards){
-    const cnt = s => PR_CACHE.filter(r=>r.status===s).length;
+    const rejected = PR_CACHE.filter(isRejected).length;
+    const active   = PR_CACHE.length - rejected;
+    const people   = new Set(PR_CACHE.filter(r=>!isRejected(r)).map(r=>r.applicant_name||r.applicant_email||'')).size;
     cards.innerHTML = `
       <div class="card"><div class="n">${PR_CACHE.length}</div><div class="l">申请总数</div></div>
-      <div class="card"><div class="n" style="color:#e08a00">${cnt('pending')}</div><div class="l">待审核</div></div>
-      <div class="card"><div class="n" style="color:#1d9e75">${cnt('approved')}</div><div class="l">已批准待采购</div></div>
-      <div class="card"><div class="n">${cnt('purchased')}</div><div class="l">已采购</div></div>`;
+      <div class="card"><div class="n" style="color:#1d9e75">${active}</div><div class="l">已申请（有效）</div></div>
+      <div class="card"><div class="n" style="color:#e24b4a">${rejected}</div><div class="l">已驳回</div></div>
+      <div class="card"><div class="n">${people}</div><div class="l">涉及申请人</div></div>`;
   }
 
   const colspan = amAdmin ? 11 : 10;
@@ -979,11 +985,13 @@ function renderPurchase(){
     const link = r.buy_url ? `<a href="${esc(r.buy_url)}" target="_blank" rel="noopener" style="color:#2f6fed">打开链接</a>` : '<span style="color:#bbb">—</span>';
     let ops = '<span style="color:#999">—</span>';
     if (amAdmin){
-      if (r.status==='pending')       ops = `<button class="btn sm green" onclick="setPurchaseStatus(${r.id},'approved')">批准</button> <button class="btn sm red" onclick="setPurchaseStatus(${r.id},'rejected')">驳回</button>`;
-      else if (r.status==='approved') ops = `<button class="btn sm blue" onclick="setPurchaseStatus(${r.id},'purchased')">标记已采购</button>`;
-      else                            ops = `<button class="btn sm" onclick="setPurchaseStatus(${r.id},'pending')">重置为待审</button>`;
+      ops = isRejected(r)
+        ? `<button class="btn sm" onclick="setPurchaseStatus(${r.id},'submitted')">恢复</button>`
+        : `<button class="btn sm red" onclick="setPurchaseStatus(${r.id},'rejected')">驳回</button>`;
     }
-    return `<tr>
+    const note = isRejected(r) && r.handle_note
+      ? `<div style="font-size:11px;color:#e24b4a;margin-top:3px">理由：${esc(r.handle_note)}</div>` : '';
+    return `<tr${isRejected(r)?' style="opacity:.62"':''}>
       <td>${esc((r.created_at||'').replace('T',' ').slice(0,16))}</td>
       <td>${esc(r.applicant_name||r.applicant_email||'')}</td>
       <td><b>${esc(r.item_name||'')}</b></td>
@@ -993,7 +1001,7 @@ function renderPurchase(){
       <td>${r.est_price!=null?('¥'+r.est_price):'—'}</td>
       <td>${link}</td>
       <td>${esc(r.reason||'—')}</td>
-      <td><span class="tag ${st.cls}">${st.label}</span></td>
+      <td><span class="tag ${st.cls}">${st.label}</span>${note}</td>
       ${amAdmin?`<td>${ops}</td>`:''}
     </tr>`;
   }).join('') || `<tr><td colspan="${colspan}" style="text-align:center;color:#999;padding:20px">暂无采购申请</td></tr>`;
@@ -1083,7 +1091,7 @@ async function submitPurchase(){
     });
     if (error) throw error;
 
-    const content = '## 🛒 采购申请通知\n'
+    const content = '## 🛒 采购申请知会（无需审批）\n'
       + '> **申请人**：' + esc(AUTH.real_name || AUTH.email || '未知') + '\n'
       + '> **物品名称**：' + esc(name) + '\n'
       + '> **型号规格**：' + esc(model || '—') + '\n'
@@ -1095,23 +1103,31 @@ async function submitPurchase(){
       + (remark ? '> **备注**：' + esc(remark) + '\n' : '')
       + (url ? '> **购买链接**：[点此查看商品](' + url + ')\n' : '')
       + '> **提交时间**：' + new Date().toLocaleString('zh-CN') + '\n'
+      + '> 该申请已直接进入采购计划，<font color="comment">如无需采购可在系统中驳回</font>\n'
       + '> [👉 进入系统查看采购计划](https://xiaojingbo-bot.github.io/yjjh-material/?view=purchase)';
     const pushed = await pushWecom(content);
     closeModal();
-    toast(pushed ? '采购申请已提交，教务主任企业微信已收到通知' : '采购申请已提交（未配置企业微信通知）', !pushed);
+    toast(pushed ? '采购申请已提交并知会教务主任企业微信' : '采购申请已提交（未配置企业微信通知）', !pushed);
     await loadPurchase();
   } catch(e){ toast('提交失败：'+e.message, true); }
 }
 
 async function setPurchaseStatus(id, status){
-  const labels = { approved:'批准', rejected:'驳回', purchased:'标记为已采购', pending:'重置为待审核' };
-  if(!confirm('确认将该申请「' + labels[status] + '」？')) return;
+  const row = PR_CACHE.find(r=>r.id===id) || {};
+  let note = null;
+  if (status === 'rejected'){
+    const input = prompt('驳回「' + (row.item_name||'该申请') + '」的原因（可留空，会显示给申请老师）：', '');
+    if (input === null) return;              // 点了取消
+    note = (input||'').trim() || null;
+  } else {
+    if (!confirm('确认将该条采购申请恢复为「已申请」？')) return;
+  }
   try {
     const { error } = await sb.from('purchase_requests')
-      .update({ status, handled_at:new Date().toISOString(), handled_by: AUTH.real_name || AUTH.email || '' })
+      .update({ status, handle_note: note, handled_at:new Date().toISOString(), handled_by: AUTH.real_name || AUTH.email || '' })
       .eq('id', id);
     if (error) throw error;
-    toast('已' + labels[status]);
+    toast(status === 'rejected' ? '已驳回该采购申请' : '已恢复为「已申请」');
     await loadPurchase();
   } catch(e){ toast('操作失败：'+e.message, true); }
 }
@@ -1120,8 +1136,16 @@ function exportPurchase(){
   ensureXLSX();
   const fs = (document.getElementById('pr_filter')||{}).value || '';
   const q  = ((document.getElementById('pr_search')||{}).value || '').trim().toLowerCase();
-  let rows = PR_CACHE.filter(r => (!fs || r.status===fs));
+  let rows = PR_CACHE.filter(r => !fs || (fs==='rejected' ? isRejected(r) : !isRejected(r)));
   if (q) rows = rows.filter(r => [r.item_name,r.model,r.applicant_name,r.reason].some(v=>(v||'').toLowerCase().includes(q)));
+  // 全部状态下若混有已驳回条目，询问是否剔除（发给行政采购通常只要有效申请）
+  if (!fs){
+    const bad = rows.filter(isRejected).length;
+    if (bad) {
+      rows = confirm('当前结果含 ' + bad + ' 条「已驳回」申请。\n\n发给行政采购通常不含驳回项。\n\n点「确定」= 只导出有效申请\n点「取消」= 全部导出')
+        ? rows.filter(r=>!isRejected(r)) : rows;
+    }
+  }
   if(!rows.length){ toast('当前筛选结果为空，无可导出内容', true); return; }
 
   let total = 0;
