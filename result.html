@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>审批结果</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',system-ui,sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:#fff;border-radius:18px;max-width:440px;width:100%;padding:36px 26px;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.icon{font-size:54px;margin-bottom:14px}
+.title{margin:0 0 14px;font-size:23px}
+.msg{color:#374151;font-size:16px;line-height:1.65}
+.footer{color:#9ca3af;font-size:13px;margin-top:22px}
+.ok .title{color:#16a34a}
+.err .title{color:#dc2626}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+<div class="icon" id="icon"></div>
+<h2 class="title" id="title"></h2>
+<p class="msg" id="msg"></p>
+<p class="footer">优佳宏锦物料管理系统 · 企业微信快捷审批</p>
+</div>
+<script>
+(function(){
+  var p = new URLSearchParams(location.search);
+  var ok = p.get('s') === 'ok';
+  var card = document.getElementById('card');
+  card.className = ok ? 'card ok' : 'card err';
+  document.getElementById('icon').textContent = ok ? '\u2705' : '\u26A0\uFE0F';
+  document.getElementById('title').textContent = p.get('t') || (ok ? '操作完成' : '操作失败');
+  document.getElementById('msg').textContent = p.get('m') || '';
+})();
+</script>
+</body>
+</html>

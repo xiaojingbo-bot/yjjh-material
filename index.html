@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260810d</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<script src="js/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #1f2329; }
+  /* 登录 */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; background: #0c447c; overflow: hidden; }
+  .login-wrap::before { content: ""; position: absolute; inset: 0; background: url("img/production_line_bg.jpg") center/cover no-repeat; opacity: .55; filter: saturate(1.05); }
+  .login-wrap::after { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(12,68,124,.55), rgba(29,158,117,.45)); }
+  .login-card { background: #fff; padding: 36px 40px; border-radius: 12px; width: 340px; box-shadow: 0 8px 30px rgba(0,0,0,.35); position: relative; z-index: 1; }
+  .login-card .brand-logo { display: block; width: 200px; height: auto; margin: 0 auto 14px; }
+  .login-card h2 { text-align: center; margin-bottom: 6px; color: #0c447c; }
+  .login-card p.sub { text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; }
+  .login-card input { width: 100%; padding: 10px 12px; margin-bottom: 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  .login-card button { width: 100%; padding: 11px; background: #0c447c; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  .login-card button:hover { background: #185fa5; }
+  .err { color: #e24b4a; font-size: 13px; min-height: 18px; margin-bottom: 8px; text-align: center; }
+  /* 布局 */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { width: 210px; background: #0c447c; color: #fff; padding: 20px 0; flex-shrink: 0; }
+  .sidebar .logo { text-align: center; font-size: 17px; font-weight: 600; padding: 0 16px 18px; border-bottom: 1px solid rgba(255,255,255,.15); }
+  .sidebar .logo img { display: block; width: 168px; height: auto; margin: 0 auto 10px; background: #fff; padding: 8px 10px; border-radius: 6px; }
+  .sidebar .user { font-size: 12px; color: #b5d4f4; text-align: center; padding: 12px 0; }
+  .menu-item { padding: 13px 22px; cursor: pointer; font-size: 14px; border-left: 3px solid transparent; }
+  .menu-item:hover { background: rgba(255,255,255,.1); }
+  .menu-item.active { background: rgba(255,255,255,.18); border-left-color: #5dcaa5; }
+  .sidebar .backup { margin: 16px 16px 0; }
+  .sidebar .backup button { width: 100%; padding: 8px; font-size: 12px; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; cursor: pointer; }
+  .sidebar .backup button:hover { background: rgba(255,255,255,.28); }
+  .main { flex: 1; padding: 24px 28px; overflow: auto; }
+  .main h3 { margin-bottom: 14px; color: #0c447c; }
+  .hint { color: #888; font-size: 13px; margin: 0 0 14px; line-height: 1.6; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .toolbar input, .toolbar select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
+  .btn { padding: 8px 14px; border: none; border-radius: 7px; font-size: 13px; cursor: pointer; background: #0c447c; color: #fff; }
+  .btn:hover { background: #185fa5; }
+  .btn.green { background: #1d9e75; } .btn.green:hover { background: #0f6e56; }
+  .btn.red { background: #e24b4a; } .btn.red:hover { background: #a32d2d; }
+  .btn.blue { background: #2f6fed; } .btn.blue:hover { background: #1f4fb0; }
+  .btn.sm { padding: 5px 9px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  th, td { padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #eee; }
+  th { background: #f6f8fa; color: #555; font-weight: 600; }
+  tr:hover td { background: #fafbfc; }
+  .tag { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; }
+  .tag.ok { background: #e6f7ee; color: #1d9e75; }
+  .tag.warn { background: #fff3e0; color: #e08a00; }
+  .tag.danger { background: #fdeaea; color: #e24b4a; }
+  .cards { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .card { background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); min-width: 150px; }
+  .card .n { font-size: 24px; font-weight: 700; color: #0c447c; }
+  .card .l { font-size: 12px; color: #888; margin-top: 4px; }
+  /* 模态 */
+  .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal-mask.show { display: flex; }
+  .modal { background: #fff; border-radius: 12px; padding: 24px 26px; width: 460px; max-width: 92vw; max-height: 88vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+  .modal h4 { margin-bottom: 16px; color: #0c447c; }
+  .form-row { display: flex; align-items: center; margin-bottom: 12px; }
+  .form-row label { width: 92px; color: #555; font-size: 13px; flex-shrink: 0; }
+  .form-row input, .form-row select { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .stock-box { margin-top: 6px; padding: 10px 12px; border-radius: 8px; background: #f6f8fa; font-size: 13px; line-height: 1.7; }
+  .stock-box.warn { background: #fdeaea; color: #e24b4a; }
+  .mat-picker { position: relative; flex: 1; }
+  .mat-picker input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
+  .mat-picker .results { position: absolute; top: 38px; left: 0; right: 0; background: #fff; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); max-height: 240px; overflow: auto; z-index: 60; display: none; }
+  .mat-picker .item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f3f3f3; }
+  .mat-picker .item:hover { background: #f0f6ff; }
+  .mat-picker .nm { font-size: 13px; } .mat-picker .cd { color: #999; font-size: 12px; margin: 0 8px; } .mat-picker .st { color: #1d9e75; font-size: 12px; }
+  .mat-picker .empty { padding: 10px 12px; color: #999; font-size: 13px; }
+  /* toast */
+  #toast { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px; z-index: 99; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: .95; }
+  #toast.err { background: #e24b4a; }
+  .panel { background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 18px; }
+  .panel h4 { font-size: 15px; margin-bottom: 12px; color: #0c447c; }
+</style>
+</head>
+<body>
+  <!-- 登录 -->
+  <div class="login-wrap" id="loginView">
+    <div class="login-card">
+      <img class="brand-logo" src="img/logo.png" alt="logo">
+      <h2>物料管理系统</h2>
+      <p class="sub">优佳宏锦职业培训学校</p>
+      <input id="lg_user" placeholder="登录账号（如 jiaowu 或 jiaowu@yjjh.edu）" autocomplete="username">
+      <input id="lg_pwd" type="password" placeholder="密码" autocomplete="current-password">
+      <div class="err" id="lg_err"></div>
+      <button onclick="doLogin()">登 录</button>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div class="app" id="appView" style="display:none">
+    <div class="sidebar">
+      <div class="logo"><img src="img/logo.png" alt="logo">物料管理系统</div>
+      <div class="user" id="sideUser"></div>
+      <div class="menu-item active" data-view="materials" onclick="switchView('materials')">📦 物料管理</div>
+      <div class="menu-item" id="mi_inbound" data-view="inbound" onclick="switchView('inbound')">⬇ 入库管理</div>
+      <div class="menu-item" id="mi_outbound" data-view="outbound" onclick="switchView('outbound')">⬆ 出库管理</div>
+      <div class="menu-item" data-view="requests" id="mi_requests" onclick="switchView('requests')" style="display:none">📨 出库申请</div>
+      <div class="menu-item" data-view="accounts" id="mi_accounts" onclick="switchView('accounts')" style="display:none">👤 账户管理</div>
+      <div class="backup" id="backupPanel">
+        <button onclick="backupData()">⬇ 备份数据</button>
+        <button style="margin-top:8px" onclick="restoreData()">⬆ 恢复数据</button>
+      </div>
+      <div class="menu-item" id="mi_mypwd" onclick="showMyPwd()" style="margin-top:8px">🔑 修改密码</div>
+      <div class="menu-item" onclick="doLogout()" style="color:#e24b4a">⏻ 退出登录</div>
+    </div>
+    <div class="main" id="mainView"></div>
+  </div>
+
+  <div class="modal-mask" id="modalMask"><div class="modal" id="modalBox"></div></div>
+  <div id="toast"></div>
+
+<script>
+// ---------- 常量 ----------
+const LOCATIONS = [];
+['左','中','右'].forEach(s => { for (let i=1;i<=5;i++) LOCATIONS.push(s+i+'层'); });
+const INBOUND_TYPES = ['采购入库','退货入库','调拨入库','其他'];
+const OUTBOUND_TYPES = ['领用出库','调拨出库','损耗出库','其他'];
+const CATEGORIES = ['实训设备','工具耗材','电子元件','教材资料','其他'];
+const UNITS = ['台','个','套','本','米','千克'];
+
+// ---------- Supabase 配置（部署前由我填入真实值）----------
+const SUPABASE_URL = 'https://mjucegnphdjpuxiyowrb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_wu__otFoGZ7rw581vmdFxA_IpYWaRI9';
+const SHARE_KEY = 'yjjh2026'; // 教师只读分享口令，须与 view.html 一致
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ---------- 存储（云端共享：Supabase）----------
+const STATE = { materials: [], inbound: [], outbound: [], adjustments: [], users: [] };
+let AUTH = { session: null, user: null, role: null, real_name: null };
+const DB = {
+  get(k, d) { if (k in STATE) return STATE[k]; return d; },
+  set(k, v) { STATE[k] = v; }
+};
+function getMaterials(){ return STATE.materials; }
+function getInbound(){ return STATE.inbound; }
+function getOutbound(){ return STATE.outbound; }
+
+async function loadSnapshot() {
+  const [m, ib, ob, adj] = await Promise.all([
+    sb.from('materials').select('*').order('id', { ascending: true }),
+    sb.from('inbound').select('*').order('id', { ascending: false }),
+    sb.from('outbound').select('*').order('id', { ascending: false }),
+    sb.from('adjustments').select('*').order('id', { ascending: false }),
+  ]);
+  if (m.error) throw m.error;
+  STATE.materials = m.data || [];
+  STATE.inbound = ib.data || [];
+  STATE.outbound = ob.data || [];
+  STATE.adjustments = adj.data || [];
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+function now() { return new Date().toLocaleString('zh-CN'); }
+
+// 数据由云端统一管理，不再本地初始化（initData 已弃用）
+
+
+// ---------- 工具 ----------
+let toastTimer = null;
+function toast(msg, isErr){ const el=document.getElementById('toast'); el.textContent=msg; el.className='show'+(isErr?' err':''); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.className='', 2200); }
+function showModal(html){ document.getElementById('modalBox').innerHTML=html; document.getElementById('modalMask').classList.add('show'); }
+function closeModal(){ document.getElementById('modalMask').classList.remove('show'); }
+function statusOf(m){
+  if (m.stock <= 0) return {cls:'danger', txt:'缺货'};
+  if (m.stock < m.safety_stock) return {cls:'warn', txt:'库存预警'};
+  return {cls:'ok', txt:'充足'};
+}
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---------- 认证（Supabase Auth）----------
+function isAdmin(){ return AUTH.role && ['校长','教务主任'].includes(AUTH.role); }
+function isTeacher(){ return AUTH.role === '教师'; }
+function canWriteTxn(){ return AUTH.role && ['校长','教务主任','教师'].includes(AUTH.role); }
+function authName(){ return (AUTH.user && AUTH.user.user_metadata && AUTH.user.user_metadata.real_name) || (AUTH.user && AUTH.user.email) || '管理员'; }
+async function checkLogin(){
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return false;
+  return await afterAuth(session);
+}
+async function afterAuth(session){
+  AUTH.session = session;
+  AUTH.user = session.user;
+  AUTH.role = (session.user.user_metadata && session.user.user_metadata.role) || null;
+  AUTH.real_name = (session.user.user_metadata && session.user.user_metadata.real_name) || null;
+  try { await loadSnapshot(); } catch(e){ toast('加载数据失败：' + (e.message || e), true); }
+  showApp();
+  return true;
+}
+async function doLogin(){
+  let email = document.getElementById('lg_user').value.trim();
+  const pwd = document.getElementById('lg_pwd').value;
+  const err = document.getElementById('lg_err');
+  err.textContent='';
+  // 若输入不含 @，自动补全为 @yjjh.edu
+  if (email && !email.includes('@')) email = email + '@yjjh.edu';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  if (error){ err.textContent = error.message; return; }
+  await afterAuth(data.session);
+}
+async function doLogout(){ if(!confirm('确认退出登录？退出后将返回登录界面。')) return; await sb.auth.signOut(); AUTH = { session:null, user:null, role:null, real_name:null }; location.reload(); }
+
+// ---------- 修改自己的密码（所有登录用户，含教师）----------
+function showMyPwd(){
+  const email = (AUTH.user && AUTH.user.email) || '';
+  showModal(`<h4>修改密码</h4>
+    <p class="hint" style="margin-left:0">当前账号：<b>${esc(email)}</b>。为保障安全，需先验证当前密码；修改成功后将自动退出，请用新密码重新登录。</p>
+    <div class="form-row"><label>当前密码</label><input id="mp_old" type="password" placeholder="请输入当前密码"></div>
+    <div class="form-row"><label>新密码</label><input id="mp_new" type="password" placeholder="至少 6 位"></div>
+    <div class="form-row"><label>确认新密码</label><input id="mp_new2" type="password" placeholder="再次输入新密码"></div>
+    <div id="mp_msg" style="font-size:13px;color:#888;min-height:18px;margin-top:4px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn green" id="mp_ok" onclick="doChangeMyPwd()">确认修改</button>
+    </div>`);
+  setTimeout(()=>{ const el=document.getElementById('mp_old'); if(el) el.focus(); }, 60);
+}
+async function doChangeMyPwd(){
+  const oldp = document.getElementById('mp_old').value || '';
+  const p1   = document.getElementById('mp_new').value || '';
+  const p2   = document.getElementById('mp_new2').value || '';
+  const msg  = document.getElementById('mp_msg');
+  const btn  = document.getElementById('mp_ok');
+  const fail = t => { msg.style.color='#e24b4a'; msg.textContent=t; btn.disabled=false; };
+  if(!oldp) return fail('请输入当前密码');
+  if(p1.length < 6) return fail('新密码至少 6 位');
+  if(p1 !== p2) return fail('两次输入的新密码不一致');
+  if(p1 === oldp) return fail('新密码不能与当前密码相同');
+  const email = AUTH.user && AUTH.user.email;
+  if(!email) return fail('登录状态异常，请重新登录后再试');
+  btn.disabled = true; msg.style.color='#888'; msg.textContent='正在验证当前密码…';
+  const { error: e1 } = await sb.auth.signInWithPassword({ email, password: oldp });
+  if(e1) return fail('当前密码不正确，请重新输入');
+  msg.textContent = '正在修改…';
+  const { error: e2 } = await sb.auth.updateUser({ password: p1 });
+  if(e2) return fail('修改失败：' + e2.message);
+  closeModal();
+  toast('密码已修改，即将退出，请用新密码重新登录');
+  setTimeout(async ()=>{ try{ await sb.auth.signOut(); }catch(e){} location.reload(); }, 1800);
+}
+function showApp(){
+  document.getElementById('sideUser').textContent = authName() + '（' + (AUTH.role || '未设角色') + '）';
+  document.getElementById('loginView').style.display='none';
+  document.getElementById('appView').style.display='flex';
+  document.getElementById('backupPanel').style.display = isAdmin() ? 'block' : 'none';
+  document.getElementById('mi_accounts').style.display = isAdmin() ? 'block' : 'none';
+  document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
+  document.getElementById('mi_outbound').style.display = isAdmin() ? 'block' : 'none';
+  document.getElementById('mi_inbound').style.display = isAdmin() ? 'block' : 'none';
+  switchView('materials');
+  // 深链支持：?view=requests 直接进入出库申请视图
+  const dv = new URLSearchParams(location.search).get('view');
+  if (dv && ['materials','inbound','outbound','accounts','requests'].includes(dv)) switchView(dv);
+}
+
+// ---------- 视图切换 ----------
+let CUR = 'materials';
+function switchView(v){
+  CUR = v;
+  document.querySelectorAll('.menu-item').forEach(el=>el.classList.remove('active'));
+  const cur = document.querySelector('.menu-item[data-view="'+v+'"]');
+  if (cur) cur.classList.add('active');
+  if (v==='materials') viewMaterials();
+  else if (v==='inbound') viewInbound();
+  else if (v==='outbound') viewOutbound();
+  else if (v==='accounts') viewAccounts();
+  else if (v==='requests') viewRequests();
+}
+
+// ---------- 物料管理（只读台账）----------
+function viewMaterials(){
+  const mats = getMaterials();
+  const warns = mats.filter(m => (m.stock||0) <= 0 || (m.stock||0) < (m.safety_stock||0)).length;
+  const totalStock = mats.reduce((s,m)=>s+(Number(m.stock)||0),0);
+  let html = `<h3>物料管理 · 库存台账（只读）</h3>
+    <p class="hint">本页为物料状态总览，仅查看不可编辑；新增物料请在「入库管理」中登记或批量导入。</p>
+    <div class="cards">
+      <div class="card"><div class="n">${mats.length}</div><div class="l">物料种类</div></div>
+      <div class="card"><div class="n">${totalStock}</div><div class="l">库存总量（件）</div></div>
+      <div class="card"><div class="n" style="color:${warns?'#e24b4a':'#1d9e75'}">${warns}</div><div class="l">预警物料数</div></div>
+    </div>
+    <div class="toolbar">
+      <input id="m_search" placeholder="🔍 搜索名称 / 编号 / 型号" oninput="filterMaterials()" style="width:240px">
+      <select id="m_status" onchange="filterMaterials()">
+        <option value="">全部状态</option><option value="ok">充足</option><option value="warn">库存预警</option><option value="danger">缺货</option>
+      </select>
+      <button class="btn" onclick="refreshMaterials()" id="m_refresh_btn">↻ 刷新</button>
+      ${isAdmin()?'<button class="btn" style="margin-left:auto" onclick="openAdjustModal()">📊 库存盘点 / 调整</button><button class="btn blue" onclick="viewAdjustLog()">📋 盘点记录</button>':''}
+    </div>
+    <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th style="background:#eef4ff;color:#2f6fed">当前库存</th><th style="color:#999;font-weight:400">安全库存线</th><th>状态</th>${isAdmin()?'<th>操作</th>':''}</tr></thead><tbody id="m_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  filterMaterials();
+}
+async function refreshMaterials(){
+  const btn = document.getElementById('m_refresh_btn');
+  const old = btn?.innerHTML;
+  if (btn){ btn.disabled = true; btn.innerHTML = '⟳ 刷新中…'; }
+  try {
+    await loadSnapshot();
+    viewMaterials();
+    toast('已刷新物料数据');
+  } catch(e){ toast('刷新失败：' + (e.message || e), true); }
+  finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
+}
+function filterMaterials(){
+  const q = (document.getElementById('m_search').value||'').trim().toLowerCase();
+  const st = document.getElementById('m_status').value;
+  const mats = getMaterials().filter(m=>{
+    const hit = !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || (m.spec||'').toLowerCase().includes(q);
+    const s = statusOf(m); const hit2 = !st || s.cls===st;
+    return hit && hit2;
+  });
+  document.getElementById('m_body').innerHTML = mats.map(m=>{
+    const s = statusOf(m);
+    return `<tr><td>${m.code}</td><td>${m.name}</td><td>${m.spec||''}</td><td>${m.category}</td><td>${m.unit}</td><td>${m.location||''}</td><td style="background:#f5f9ff"><b style="font-size:16px;color:#1a1a1a">${m.stock}</b> <span style="color:#888;font-size:11px">${m.unit||''}</span></td><td style="color:#aaa;font-size:12px">≥ ${m.safety_stock}</td><td><span class="tag ${s.cls}">${s.txt}</span></td>${isAdmin()?`<td><button class="btn sm" onclick="openAdjustModal(${m.id})">📝 调整</button></td>`:''}</tr>`;
+  }).join('') || `<tr><td colspan="${isAdmin()?10:9}" style="text-align:center;color:#999;padding:20px">暂无匹配的物料</td></tr>`;
+}
+
+// ---------- 库存盘点 / 调整 ----------
+let ADJ_MAT = null;
+function getAdjustments(){ return STATE.adjustments; }
+function saveAdjustments(a){ STATE.adjustments = a; }
+function openAdjustModal(id){
+  ADJ_MAT = id ? getMaterials().find(m=>m.id===id) : null;
+  showModal(`<h4>📊 库存盘点 / 调整</h4>
+    <p class="hint" style="margin-left:0">选择物料 → 录入盘点后的<b>实际数量</b> → 填写原因。系统将把库存更新为实盘数量，并保留一条调整记录（可追溯）。</p>
+    <div class="form-row"><label>选择物料</label>
+      <div class="mat-picker">
+        <input id="adj_search" placeholder="🔍 搜索物料名称 / 编号" oninput="searchAdjMat()" autocomplete="off" value="${ADJ_MAT?ADJ_MAT.name:''}">
+        <div class="results" id="adj_results"></div>
+      </div>
+    </div>
+    <div id="adj_stockbox"></div>
+    <div class="form-row"><label>实盘数量</label><input id="adj_new" type="number" min="0" placeholder="盘点后的实际库存数量" oninput="onAdjStock()"></div>
+    <div class="form-row"><label>调整原因</label><input id="adj_reason" placeholder="如：盘点差异、损耗、报废、录入更正等" style="width:100%"></div>
+    <div class="form-row"><label>经办人</label><input id="adj_handler" placeholder="经办人" style="width:120px" value="${AUTH.real_name||''}"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn blue" onclick="submitAdjustModal()">保存调整</button></div>`);
+  if (ADJ_MAT) onAdjStock();
+}
+function searchAdjMat(){
+  const q=(document.getElementById('adj_search').value||'').trim().toLowerCase();
+  const box=document.getElementById('adj_results');
+  if(!q){ box.style.display='none'; return; }
+  const hits=getMaterials().filter(m=>m.name.toLowerCase().includes(q)||m.code.toLowerCase().includes(q)).slice(0,8);
+  if(!hits.length){ box.innerHTML='<div class="empty">无匹配物料</div>'; box.style.display='block'; return; }
+  box.innerHTML=hits.map(m=>`<div class="item" onclick="pickAdjMat(${m.id})"><span class="nm">${m.name}</span><span class="cd">${m.code}</span><span class="st">库存 ${m.stock}${m.unit}</span></div>`).join('');
+  box.style.display='block';
+}
+function pickAdjMat(id){ ADJ_MAT=getMaterials().find(m=>m.id===id); document.getElementById('adj_search').value=ADJ_MAT.name; document.getElementById('adj_results').style.display='none'; onAdjStock(); }
+function onAdjStock(){
+  const box=document.getElementById('adj_stockbox');
+  if(!ADJ_MAT){ box.innerHTML=''; return; }
+  const nv=parseFloat(document.getElementById('adj_new').value);
+  if(isNaN(nv)){ box.className='stock-box'; box.innerHTML=`当前系统库存：<b>${ADJ_MAT.stock}</b> ${ADJ_MAT.unit}（录入实盘数量后将显示差额）`; return; }
+  const delta=nv-ADJ_MAT.stock;
+  const sign=delta>0?('+'+delta):(delta<0?String(delta):'无变化');
+  box.className='stock-box'+(delta<0?' warn':'');
+  box.innerHTML=`当前系统库存：<b>${ADJ_MAT.stock}</b> ${ADJ_MAT.unit} ｜ 调整为：<b>${nv}</b> ｜ 差额：<b>${sign}</b>${delta<0?'（减少，请确认损耗/出库均已登记）':(delta>0?'（增加，请确认有对应入库）':'')}`;
+}
+async function submitAdjustModal(){
+  if(!ADJ_MAT){ toast('请先搜索并选择物料', true); return; }
+  const nv=parseFloat(document.getElementById('adj_new').value);
+  if(isNaN(nv)||nv<0){ toast('请输入有效的实盘数量（≥0）', true); return; }
+  const reason=document.getElementById('adj_reason').value.trim();
+  if(!reason){ toast('请填写调整原因（便于追溯）', true); return; }
+  const m=getMaterials().find(x=>x.id===ADJ_MAT.id);
+  const old=m.stock; const delta=nv-old;
+  try {
+    const { error } = await sb.rpc('do_adjust', {
+      p_material_id: ADJ_MAT.id, p_new_stock: nv, p_reason: reason,
+      p_handler: document.getElementById('adj_handler').value.trim() || authName()
+    });
+    if (error) throw error;
+    await loadSnapshot();
+    toast(`已调整「${m.name}」库存为 ${nv}（${delta>0?'+':''}${delta}）`);
+    closeModal(); viewMaterials();
+  } catch(e){ toast(e.message, true); }
+}
+function viewAdjustLog(){
+  const arr=getAdjustments().slice().reverse();
+  const rows = arr.length ? arr.map(r=>`<tr><td>${r.date}</td><td>${r.material_code} ${r.material_name}</td><td>${r.old_stock} → <b>${r.new_stock}</b></td><td>${r.delta>0?'+':''}${r.delta}</td><td>${r.reason}</td><td>${r.handler||''}</td></tr>`).join('')
+    : `<tr><td colspan="6" style="text-align:center;color:#999;padding:18px">暂无盘点调整记录</td></tr>`;
+  showModal(`<h4>📋 库存盘点 / 调整记录</h4>
+    <p class="hint" style="margin-left:0">所有库存盘点与人工调整都会留痕，便于追溯差异来源。</p>
+    <table><thead><tr><th>日期</th><th>物料</th><th>库存变化</th><th>差额</th><th>原因</th><th>经办人</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">关闭</button></div>`);
+}
+
+// ---------- 入库管理 ----------
+function viewInbound(){
+  let html = `<h3>入库管理 · 登记入库 / 新增物料 / 批量导入</h3>
+    <p class="hint">选择已有物料登记入库；或点「新增物料」创建物料并录入首笔入库量；或点「批量导入」下载模板后批量导入（系统自动按名称匹配、自动生成编号与日期）。</p>
+    ${isAdmin()? `
+    <div class="panel">
+      <h4>登记入库（已有物料）</h4>
+      <div class="toolbar">
+        <div class="mat-picker">
+          <input id="ib_search" placeholder="🔍 搜索物料名称 / 编号" oninput="searchIbMat()" autocomplete="off">
+          <div class="results" id="ib_results"></div>
+        </div>
+        <select id="ib_type">${INBOUND_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+        <input id="ib_qty" type="number" min="0" placeholder="数量" style="width:90px" oninput="onIbQty()">
+        <input id="ib_date" type="date" value="${today()}">
+        <input id="ib_handler" placeholder="经办人" style="width:100px" value="${AUTH.real_name||''}">
+        <input id="ib_remark" placeholder="备注" style="width:120px">
+        <button class="btn green" onclick="doInbound()">确认入库</button>
+        ${isAdmin()?'<button class="btn blue" onclick="openAddMat()">＋ 新增物料</button>':''}
+        <button class="btn" onclick="openImportInbound()">⬆ 批量导入</button>
+      </div>
+      <div id="ib_stockbox"></div>
+    </div>` : '<p class="hint">当前账号无入库权限，如需登记入库请联系教务主任开通账号。</p>'}
+    <div class="toolbar">
+      <input id="if_date" type="date"><input id="if_mat" placeholder="物料名"><input id="if_handler" placeholder="经办人">
+      <button class="btn" onclick="filterInbound()">查询记录</button>
+      <button class="btn green" onclick="exportInbound()">⬇ 导出当前筛选结果</button>
+    </div>
+    <h4 style="margin:14px 0 10px;font-size:15px">入库记录</h4>
+    <table><thead><tr><th>ID</th><th>物料编号</th><th>物料名称</th><th>规格型号</th><th>上架位置</th><th>类型</th><th>数量</th><th>日期</th><th>经办人</th><th>备注</th></tr></thead><tbody id="ib_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  IB_MAT = null;
+  filterInbound();
+}
+let IB_MAT = null;
+function searchIbMat(){
+  const q = (document.getElementById('ib_search').value||'').trim().toLowerCase();
+  const box = document.getElementById('ib_results');
+  if (!q){ box.style.display='none'; return; }
+  const hits = getMaterials().filter(m=>m.name.toLowerCase().includes(q)||m.code.toLowerCase().includes(q)).slice(0,8);
+  if (!hits.length){ box.innerHTML='<div class="empty">无匹配物料</div>'; box.style.display='block'; return; }
+  box.innerHTML = hits.map(m=>`<div class="item" onclick="pickIbMat(${m.id})"><span class="nm">${m.name}</span><span class="cd">${m.code}</span><span class="st">库存 ${m.stock}${m.unit}</span></div>`).join('');
+  box.style.display='block';
+}
+function pickIbMat(id){ IB_MAT = getMaterials().find(m=>m.id===id); document.getElementById('ib_search').value=IB_MAT.name; document.getElementById('ib_results').style.display='none'; onIbQty(); }
+function onIbQty(){
+  const box = document.getElementById('ib_stockbox');
+  if (!IB_MAT){ box.innerHTML=''; return; }
+  const qty = parseFloat(document.getElementById('ib_qty').value)||0;
+  box.className='stock-box';
+  box.innerHTML = `当前库存：<b>${IB_MAT.stock}</b> ${IB_MAT.unit} ｜ 本次入库：<b>${qty}</b> ｜ 入库后：<b>${IB_MAT.stock+qty}</b>`;
+}
+async function doInbound(){
+  if (!IB_MAT){ toast('请先搜索并选择物料', true); return; }
+  const qty = parseFloat(document.getElementById('ib_qty').value);
+  if (!qty || qty<=0){ toast('请输入有效的入库数量', true); return; }
+  try {
+    const { error } = await sb.rpc('do_inbound', {
+      p_material_id: IB_MAT.id, p_type: document.getElementById('ib_type').value, p_qty: qty,
+      p_date: document.getElementById('ib_date').value||today(),
+      p_handler: document.getElementById('ib_handler').value.trim(), p_remark: document.getElementById('ib_remark').value.trim()
+    });
+    if (error) throw error;
+    await loadSnapshot();
+    toast('入库成功，库存已更新');
+    document.getElementById('ib_qty').value=''; document.getElementById('ib_remark').value=''; IB_MAT=null; document.getElementById('ib_search').value=''; document.getElementById('ib_stockbox').innerHTML='';
+    filterInbound();
+  } catch(e){ toast(e.message, true); }
+}
+
+// 新增物料（带首笔入库量）
+function openAddMat(){
+  showModal(`<h4>新增物料（并录入首笔入库）</h4>
+    <div class="form-row"><label>物料名称</label><input id="am_name" placeholder="必填"></div>
+    <div class="form-row"><label>规格型号</label><input id="am_spec" placeholder="如 SDR-220V"></div>
+    <div class="form-row"><label>类别</label><select id="am_cat">${CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div class="form-row"><label>单位</label><select id="am_unit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select></div>
+    <div class="form-row"><label>上架位置</label><select id="am_loc">${LOCATIONS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+    <div class="form-row"><label>安全库存</label><input id="am_safe" type="number" min="0" value="0"></div>
+    <div class="form-row"><label>首笔入库量</label><input id="am_firstqty" type="number" min="0" placeholder="录入后即为当前库存"></div>
+    <div class="form-row"><label>备注</label><input id="am_remark"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="saveMat()">保存并入库</button></div>`);
+}
+async function saveMat(){
+  const name = document.getElementById('am_name').value.trim();
+  if (!name){ toast('请填写物料名称', true); return; }
+  const first = parseFloat(document.getElementById('am_firstqty').value)||0;
+  if (first<=0){ toast('首笔入库量需大于 0', true); return; }
+  try {
+    const { data, error } = await sb.rpc('create_material', {
+      p_name: name, p_category: document.getElementById('am_cat').value, p_unit: document.getElementById('am_unit').value,
+      p_spec: document.getElementById('am_spec').value.trim(), p_location: document.getElementById('am_loc').value,
+      p_safety_stock: parseFloat(document.getElementById('am_safe').value)||0, p_remark: document.getElementById('am_remark').value.trim(),
+      p_first_qty: first, p_handler: authName(), p_date: today()
+    });
+    if (error) throw error;
+    await loadSnapshot();
+    const code = (data && data.code) ? data.code : (Array.isArray(data) && data[0] ? data[0].code : '');
+    toast('物料已创建，首笔入库 '+first+' 件（编号 '+(code||'已生成')+'）');
+    closeModal();
+    if (CUR==='inbound') filterInbound();
+    if (CUR==='materials') viewMaterials();
+  } catch(e){ toast(e.message, true); }
+}
+
+// 批量导入
+function openImportInbound(){
+  showModal(`<h4>批量导入入库</h4>
+    <p class="hint" style="margin-left:0">① 下载导入模板 → ② 按说明填写（无需编号，名称匹配/自动新建）→ ③ 选择文件导入。</p>
+    <div class="modal-actions"><button class="btn blue" onclick="downloadInboundTemplate()">⬇ 下载导入模板</button></div>
+    <div class="form-row" style="margin-top:14px"><label>选择文件</label><input id="imp_file" type="file" accept=".xlsx,.xls" style="flex:1"></div>
+    <div id="imp_msg" style="font-size:13px;color:#888;margin:6px 0"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="doImportInbound()">开始导入</button></div>`);
+}
+function downloadInboundTemplate(){
+  ensureXLSX();
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['物料名称','规格型号','入库上架位置','入库类型','数量','经办人','备注'],
+    ['示例伺服驱动器','SDR-220V','左1层','采购入库',10,'张三','示例行请删除'],
+    ['示例新物料','X-001','中2层','采购入库',5,'张三','不存在将自动新建']
+  ]);
+  const loc = "'"+LOCATIONS.join(",")+"'";
+  const typ = "'"+INBOUND_TYPES.join(",")+"'";
+  ws['!dataValidations'] = { 'C3:C1000':{type:'list',allowBlank:true,formula1:loc}, 'D3:D1000':{type:'list',allowBlank:true,formula1:typ} };
+  XLSX.utils.book_append_sheet(wb, ws, '入库批量导入');
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ['填写说明'],
+    ['1. 无需填写物料编号，系统按"物料名称"自动匹配；匹配不到会自动新建并生成编号。'],
+    ['2. 入库上架位置请从下拉选择（左/中/右 × 1~5层）。'],
+    ['3. 入库类型请从下拉选择。'],
+    ['4. 数量须大于 0。'],
+    ['5. 日期由系统自动取导入当天，无需填写。'],
+    ['6. 经办人留空默认当前登录人。'],
+    ['7. 删除示例行后再导入。']
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws2, '填写说明');
+  XLSX.writeFile(wb, '入库批量导入模板.xlsx');
+  toast('模板已下载');
+}
+async function doImportInbound(){
+  const f = document.getElementById('imp_file').files[0];
+  if (!f){ toast('请先选择文件', true); return; }
+  const msg = document.getElementById('imp_msg');
+  msg.textContent='导入中…';
+  try {
+    ensureXLSX();
+    const buf = await f.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:false, defval:null });
+    let total=0, success=0; const errors=[];
+    for (let i=1;i<rows.length;i++){
+      const r=rows[i];
+      if (!r || r.every(v=>v==null||v==='')) continue;
+      total++;
+      const name=(r[0]!=null?String(r[0]):'').trim();
+      const qty=Number(r[4]);
+      if(!name){ errors.push(`第${i+1}行：物料名称为空`); continue; }
+      if(!(qty>0)){ errors.push(`第${i+1}行：数量无效`); continue; }
+      try {
+        const { error } = await sb.rpc('import_inbound_row', {
+          p_name: name,
+          p_spec: r[1]!=null?String(r[1]).trim():'',
+          p_loc: (r[2]!=null?String(r[2]).trim():'') || '',
+          p_type: (r[3]!=null?String(r[3]).trim():'') || '采购入库',
+          p_qty: qty,
+          p_handler: (r[5]!=null?String(r[5]).trim():'') || authName(),
+          p_remark: r[6]!=null?String(r[6]).trim():'',
+          p_date: today()
+        });
+        if (error) throw error;
+        success++;
+      } catch(e){ errors.push(`第${i+1}行：${e.message}`); }
+    }
+    await loadSnapshot();
+    msg.innerHTML = `共 ${total} 行，成功 <b style="color:#1d9e75">${success}</b> 行，失败 <b style="color:#e24b4a">${errors.length}</b> 行。` + (errors.length?('<br>'+errors.slice(0,20).map(e=>'· '+e).join('<br>')):'');
+    filterInbound();
+  } catch(e){ msg.textContent='导入失败：'+e.message; }
+}
+function filterInbound(){
+  const d=document.getElementById('if_date').value, m=document.getElementById('if_mat').value.trim(), h=document.getElementById('if_handler').value.trim();
+  const recs = getInbound().filter(r=>{
+    const mat = getMaterials().find(x=>x.id===r.material_id)||{};
+    return (!d||r.date===d) && (!m||(mat.name||'').includes(m)) && (!h||(r.handler||'').includes(h));
+  }).map(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return {...r, material_code:mat.code||'', material_name:mat.name||'', material_spec:mat.spec||'', material_location:mat.location||''}; });
+  document.getElementById('ib_body').innerHTML = recs.map(r=>`<tr><td>${r.id}</td><td>${r.material_code}</td><td>${r.material_name}</td><td>${r.material_spec}</td><td>${r.material_location}</td><td>${r.type}</td><td><b>+${r.qty}</b></td><td>${r.date}</td><td>${r.handler}</td><td>${r.remark||''}</td></tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:#999;padding:20px">暂无入库记录</td></tr>`;
+}
+function exportInbound(){
+  ensureXLSX();
+  const d=document.getElementById('if_date').value, m=document.getElementById('if_mat').value.trim(), h=document.getElementById('if_handler').value.trim();
+  const recs = getInbound().filter(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return (!d||r.date===d)&&(!m||(mat.name||'').includes(m))&&(!h||(r.handler||'').includes(h)); })
+    .map(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return [r.id,mat.code,mat.name,mat.spec,mat.location,r.type,r.qty,r.date,r.handler,r.remark]; });
+  const ws = XLSX.utils.aoa_to_sheet([['ID','物料编号','物料名称','规格型号','上架位置','类型','数量','日期','经办人','备注'], ...recs]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '入库记录');
+  XLSX.writeFile(wb, '入库记录_'+today()+'.xlsx');
+  toast('导出完成');
+}
+
+// ---------- 出库管理 ----------
+function viewOutbound(){
+  let html = `<h3>出库管理 · 搜索物料并登记出库</h3>
+    <p class="hint">点击「新增出库」弹出对话框：模糊搜索物料 → 填数量 → 提交出库（库存自动扣减，低于安全库存会预警）。</p>
+    <div class="toolbar">
+      ${canWriteTxn()?'<button class="btn red" onclick="openOutboundModal()">➕ 新增出库</button>':''}
+      <input id="of_date" type="date"><input id="of_mat" placeholder="物料名"><input id="of_receiver" placeholder="领用人">
+      <button class="btn" onclick="filterOutbound()">查询记录</button>
+      <button class="btn green" onclick="exportOutbound()">⬇ 导出当前筛选结果</button>
+    </div>
+    <h4 style="margin:14px 0 10px;font-size:15px">出库记录</h4>
+    <table><thead><tr><th>ID</th><th>物料编号</th><th>物料名称</th><th>规格型号</th><th>上架位置</th><th>类型</th><th>数量</th><th>日期</th><th>领用人</th><th>备注</th></tr></thead><tbody id="ob_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  filterOutbound();
+}
+let OB_MAT = null;
+function openOutboundModal(){
+  showModal(`<h4>新增出库</h4>
+    <div class="form-row"><label>选择物料</label><div class="mat-picker"><input id="ob_search" placeholder="🔍 输入名称/编号关键字" oninput="searchObMat()" autocomplete="off"><div class="results" id="ob_results"></div></div></div>
+    <div id="ob_matbox"></div>
+    <div class="form-row"><label>出库类型</label><select id="ob_type">${OUTBOUND_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="form-row"><label>出库数量</label><input id="ob_qty" type="number" min="0" placeholder="请输入数量" oninput="onModalOutQty()"></div>
+    <div id="ob_stockbox"></div>
+    <div class="form-row"><label>日期</label><input id="ob_date" type="date" value="${today()}"></div>
+    <div class="form-row"><label>领用人</label><input id="ob_receiver" value="${authName()}" readonly style="background:#f5f5f5;color:#666"></div>
+    <div class="form-row"><label>备注</label><input id="ob_remark"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn red" onclick="submitOutboundModal()">提交出库</button></div>`);
+  OB_MAT = null;
+}
+function searchObMat(){
+  const q=(document.getElementById('ob_search').value||'').trim().toLowerCase();
+  const box=document.getElementById('ob_results');
+  if(!q){ box.style.display='none'; return; }
+  const hits=getMaterials().filter(m=>m.name.toLowerCase().includes(q)||m.code.toLowerCase().includes(q)).slice(0,8);
+  if(!hits.length){ box.innerHTML='<div class="empty">无匹配物料</div>'; box.style.display='block'; return; }
+  box.innerHTML=hits.map(m=>`<div class="item" onclick="pickObMat(${m.id})"><span class="nm">${m.name}</span><span class="cd">${m.code}</span><span class="st">库存 ${m.stock}${m.unit}</span></div>`).join('');
+  box.style.display='block';
+}
+function pickObMat(id){ OB_MAT=getMaterials().find(m=>m.id===id); document.getElementById('ob_search').value=OB_MAT.name; document.getElementById('ob_results').style.display='none'; document.getElementById('ob_matbox').innerHTML=`<div class="stock-box">已选：<b>${OB_MAT.name}</b> [${OB_MAT.code}] ｜ 当前库存 <b>${OB_MAT.stock}</b> ${OB_MAT.unit}</div>`; onModalOutQty(); }
+function onModalOutQty(){
+  const box=document.getElementById('ob_stockbox'); if(!box) return;
+  if(!OB_MAT){ box.innerHTML=''; return; }
+  const qty=parseFloat(document.getElementById('ob_qty').value)||0;
+  const remain=OB_MAT.stock-qty; const warn=remain<OB_MAT.safety_stock;
+  box.className='stock-box'+(warn?' warn':'');
+  box.innerHTML=`当前库存：<b>${OB_MAT.stock}</b> ${OB_MAT.unit} ｜ 本次出库：<b>${qty}</b> ｜ 出库后剩余：<b>${remain}</b>${warn?' ⚠ 低于安全库存（'+OB_MAT.safety_stock+'），请注意补货！':''}`;
+}
+async function submitOutboundModal(){
+  if(!OB_MAT){ toast('请先搜索并选择物料', true); return; }
+  const qty=parseFloat(document.getElementById('ob_qty').value);
+  if(!qty||qty<=0){ toast('请输入有效的出库数量', true); return; }
+  if(qty>OB_MAT.stock){ toast('出库数量超过当前库存', true); return; }
+  try {
+    const { error } = await sb.rpc('do_outbound', {
+      p_material_id: OB_MAT.id, p_type: document.getElementById('ob_type').value, p_qty: qty,
+      p_date: document.getElementById('ob_date').value||today(),
+      p_receiver: authName(),
+      p_purpose: null,
+      p_remark: document.getElementById('ob_remark').value.trim() || null,
+      p_operator: authName(),
+    });
+    if (error) throw error;
+    await loadSnapshot();
+    const m=getMaterials().find(x=>x.id===OB_MAT.id);
+    const low = m && m.stock < m.safety_stock;
+    toast(m ? ('✅ 出库成功 — ' + m.name + ' 剩余 ' + m.stock + ' ' + (m.unit||'') + (low ? '（已低于安全库存 ' + m.safety_stock + '）' : '')) : '出库成功，库存已更新', !!low);
+    closeModal(); filterOutbound();
+  } catch(e){ toast(e.message, true); }
+}
+function filterOutbound(){
+  const d=document.getElementById('of_date').value, m=document.getElementById('of_mat').value.trim(), rcv=document.getElementById('of_receiver').value.trim();
+  const recs=getOutbound().filter(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return (!d||r.date===d)&&(!m||(mat.name||'').includes(m))&&(!rcv||(r.receiver||'').includes(rcv)); })
+    .map(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return {...r, material_code:mat.code||'', material_name:mat.name||'', material_spec:mat.spec||'', material_location:mat.location||''}; });
+  document.getElementById('ob_body').innerHTML=recs.map(r=>`<tr><td>${r.id}</td><td>${r.material_code}</td><td>${r.material_name}</td><td>${r.material_spec}</td><td>${r.material_location}</td><td>${r.type}</td><td><b>-${r.qty}</b></td><td>${r.date}</td><td>${r.receiver||''}</td><td>${r.remark||''}</td></tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:#999;padding:20px">暂无出库记录</td></tr>`;
+}
+function exportOutbound(){
+  ensureXLSX();
+  const d=document.getElementById('of_date').value, m=document.getElementById('of_mat').value.trim(), rcv=document.getElementById('of_receiver').value.trim();
+  const recs=getOutbound().filter(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return (!d||r.date===d)&&(!m||(mat.name||'').includes(m))&&(!rcv||(r.receiver||'').includes(rcv)); })
+    .map(r=>{ const mat=getMaterials().find(x=>x.id===r.material_id)||{}; return [r.id,mat.code,mat.name,mat.spec,mat.location,r.type,r.qty,r.date,r.receiver,r.remark]; });
+  const ws=XLSX.utils.aoa_to_sheet([['ID','物料编号','物料名称','规格型号','上架位置','类型','数量','日期','领用人','备注'], ...recs]);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '出库记录');
+  XLSX.writeFile(wb, '出库记录_'+today()+'.xlsx');
+  toast('导出完成');
+}
+
+// ---------- 出库申请（教师提交 + 主任查看/配置）----------
+async function viewRequests(){
+  const amAdmin = isAdmin();
+  let html = `<h3>📨 出库申请</h3>
+    <p class="hint">老师可在本页提交出库申请，提交后系统会自动向教务主任的<b>企业微信</b>推送通知；教务主任在现有「出库管理」中手动完成出库即可。</p>`;
+  if (amAdmin){
+    html += `<div class="panel"><h4>⚙️ 企业微信通知设置（教务主任）</h4>
+      <div class="toolbar">
+        <input id="wx_url" placeholder="企业微信机器人 Webhook 地址（https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...）" style="width:460px">
+        <button class="btn blue" onclick="saveWecom()">保存</button>
+        <button class="btn" onclick="testWecom()">发送测试</button>
+      </div>
+      <div id="wx_msg" style="font-size:13px;color:#888;margin-top:6px">在企业微信群里「添加机器人」后，复制 Webhook 地址粘贴此处保存。</div>
+    </div>`;
+  }
+  if (canWriteTxn()){
+    html += `<div class="panel"><h4>提交出库申请</h4>
+      <p class="hint">点击「新增申请」，在弹出的对话框中选择物料、填写数量与用途后提交；提交后会自动向教务主任的企业微信推送通知。</p>
+      <div class="toolbar"><button class="btn green" onclick="openRequestModal()">➕ 新增申请</button></div>
+    </div>`;
+  }
+  html += `<h4 style="margin:14px 0 10px;font-size:15px">申请记录</h4>
+    <table><thead><tr><th>提交时间</th><th>申请人</th><th>物资</th><th>规格</th><th>数量</th><th>类型</th><th>期望日期</th><th>用途</th><th>状态</th>${amAdmin?'<th>操作</th>':''}</tr></thead><tbody id="rq_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  if (amAdmin) loadWecom();
+  await loadRequests();
+}
+function loadReqMaterials(){
+  // 已废弃：出库申请改为弹窗式对话框（openRequestModal），不再使用内联下拉选择
+}
+async function getWecomUrl(){
+  try {
+    const { data } = await sb.from('system_config').select('value').eq('key','wecom_webhook_url').maybeSingle();
+    return (data && data.value) ? data.value : '';
+  } catch(e){ return ''; }
+}
+// 浏览器通过 Edge Function 代理推企业微信（企业微信 webhook 无 CORS 头，浏览器无法直调）
+async function pushWecom(content){
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token || '';
+    const resp = await fetch(EDGE_WECOM_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ content })
+    });
+    const data = await resp.json();
+    return data && data.ok;
+  } catch(e){ console.warn('企业微信推送失败', e); return false; }
+}
+let REQ_MAT = null;
+function openRequestModal(){
+  showModal(`<h4>提交出库申请</h4>
+    <div class="form-row"><label>选择物料</label><div class="mat-picker"><input id="rq_search" placeholder="🔍 输入名称/编号关键字" oninput="searchReqMat()" autocomplete="off"><div class="results" id="rq_results"></div></div></div>
+    <div id="rq_matbox"></div>
+    <div class="form-row"><label>出库类型</label><select id="rq_type">${OUTBOUND_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="form-row"><label>申请数量</label><input id="rq_qty" type="number" min="0" placeholder="请输入数量" oninput="onModalReqQty()"></div>
+    <div id="rq_stockbox"></div>
+    <div class="form-row"><label>期望日期</label><input id="rq_date" type="date" value="${today()}"></div>
+    <div class="form-row"><label>用途说明</label><input id="rq_reason" placeholder="用途说明（如：期末试卷打印）"></div>
+    <div class="form-row"><label>备注</label><input id="rq_remark"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitRequestModal()">提交申请</button></div>`);
+  REQ_MAT = null;
+}
+function searchReqMat(){
+  const q=(document.getElementById('rq_search').value||'').trim().toLowerCase();
+  const box=document.getElementById('rq_results');
+  if(!q){ box.style.display='none'; return; }
+  const hits=getMaterials().filter(m=>m.name.toLowerCase().includes(q)||m.code.toLowerCase().includes(q)).slice(0,8);
+  if(!hits.length){ box.innerHTML='<div class="empty">无匹配物料</div>'; box.style.display='block'; return; }
+  box.innerHTML=hits.map(m=>`<div class="item" onclick="pickReqMat(${m.id})"><span class="nm">${m.name}</span><span class="cd">${m.code}</span><span class="st">库存 ${m.stock}${m.unit}</span></div>`).join('');
+  box.style.display='block';
+}
+function pickReqMat(id){ REQ_MAT=getMaterials().find(m=>m.id===id); document.getElementById('rq_search').value=REQ_MAT.name; document.getElementById('rq_results').style.display='none'; document.getElementById('rq_matbox').innerHTML=`<div class="stock-box">已选：<b>${REQ_MAT.name}</b> [${REQ_MAT.code}] ｜ 当前库存 <b>${REQ_MAT.stock}</b> ${REQ_MAT.unit}</div>`; onModalReqQty(); }
+function onModalReqQty(){
+  const box=document.getElementById('rq_stockbox'); if(!box) return;
+  if(!REQ_MAT){ box.innerHTML=''; return; }
+  const qty=parseFloat(document.getElementById('rq_qty').value)||0;
+  const maxStock = REQ_MAT.stock || 0;
+  const over = qty > maxStock;
+  box.className='stock-box' + (over ? ' warn-box' : '');
+  box.innerHTML=`当前库存：<b>${maxStock}</b> ${REQ_MAT.unit} ｜ 本次申请：<b>${qty}</b>` + (over ? `<br><span style="color:#e24b4a;font-size:12px">⚠️ 申请数量（${qty}）超过当前库存（${maxStock}），提交时将被拒绝</span>` : '');
+}
+async function submitRequestModal(){
+  if(!REQ_MAT){ toast('请先搜索并选择物料', true); return; }
+  const qty=parseFloat(document.getElementById('rq_qty').value);
+  if(!qty||qty<=0){ toast('请输入有效的申请数量', true); return; }
+  if(qty > (REQ_MAT.stock||0)){
+    alert(`⚠️ 申请数量（${qty} ${REQ_MAT.unit}）超过当前库存（${REQ_MAT.stock} ${REQ_MAT.unit}）！\n\n当前「${REQ_MAT.name}」仅剩 ${REQ_MAT.stock} ${REQ_MAT.unit}，无法满足该申请量。\n\n请联系教务主任确认库存或调整申请数量。`);
+    return;
+  }
+  const type=document.getElementById('rq_type').value;
+  const date=document.getElementById('rq_date').value||null;
+  const reason=document.getElementById('rq_reason').value.trim()||null;
+  const remark=document.getElementById('rq_remark').value.trim()||null;
+  try {
+    const { data: ins, error } = await sb.from('outbound_requests').insert({
+      material_id: REQ_MAT.id, material_name: REQ_MAT.name, material_spec: REQ_MAT.spec||null,
+      material_code: REQ_MAT.code||null, unit: REQ_MAT.unit||null, qty,
+      reason, req_type: type, req_date: date, remark
+    }).select().single();
+    if (error) throw error;
+    const approveUrl = 'https://mjucegnphdjpuxiyowrb.supabase.co/functions/v1/approve-request?req=' + ins.id + '&tok=' + (ins.approve_token || '');
+    const content = '## 📦 出库申请通知\n'
+      + '> **申请人**：' + esc(AUTH.real_name || AUTH.email || '未知') + '\n'
+      + '> **物资**：' + esc(REQ_MAT.name) + '\n'
+      + '> **规格**：' + esc(REQ_MAT.spec || '—') + '\n'
+      + '> **摆放位置**：' + esc(REQ_MAT.location || '未设置') + '\n'
+      + '> **类型**：' + esc(type) + '\n'
+      + '> **数量**：' + qty + ' ' + esc(REQ_MAT.unit || '') + '\n'
+      + '> **期望日期**：' + (date || '—') + '\n'
+      + '> **用途**：' + esc(reason || '（未填写）') + '\n'
+      + '> **提交时间**：' + new Date().toLocaleString('zh-CN') + '\n'
+      + '> [✅ 一键出库（无需进系统，点此直接扣库存）](' + approveUrl + ')\n'
+      + '> [👉 或点击进入系统处理申请](https://xiaojingbo-bot.github.io/yjjh-material/?view=requests)\n'
+      + '> 链接含专属审批令牌，仅本人可操作，可放心点击。';
+    const pushed = await pushWecom(content);
+    closeModal();
+    toast(pushed ? '申请已提交，教务主任企业微信已收到通知' : '申请已提交（未配置企业微信通知）', !pushed);
+    await loadRequests();
+  } catch(e){ toast('失败：'+e.message, true); }
+}
+async function loadRequests(){
+  const body = document.getElementById('rq_body');
+  try {
+    const { data, error } = await sb.from('outbound_requests').select('*').order('created_at',{ascending:false});
+    if (error) throw error;
+    const st = { pending:'<span class="tag warn">待处理</span>', handled:'<span class="tag ok">已处理</span>', cancelled:'<span class="tag">已取消</span>' };
+    body.innerHTML = (data||[]).map(r=>`<tr>
+      <td>${esc((r.created_at||'').replace('T',' ').slice(0,16))}</td>
+      <td>${esc(r.applicant_name||r.applicant_email||'')}</td>
+      <td>${esc(r.material_name||'')}</td>
+      <td>${esc(r.material_spec||'—')}</td>
+      <td><b>${r.qty}</b> ${esc(r.unit||'')}</td>
+      <td>${esc(r.req_type||'—')}</td>
+      <td>${esc(r.req_date||'—')}</td>
+      <td>${esc(r.reason||'')}</td>
+      <td>${st[r.status]||r.status}</td>
+      ${isAdmin()?`<td>${r.status==='pending'?'<button class="btn sm green" onclick="processOutbound('+r.id+')">出库</button> <button class="btn sm" onclick="markHandled('+r.id+')">标记</button>':'<span style="color:#999">—</span>'}</td>`:''}
+    </tr>`).join('') || '<tr><td colspan="'+(isAdmin()?10:9)+'" style="text-align:center;color:#999;padding:20px">暂无申请记录</td></tr>';
+  } catch(e){ body.innerHTML = '<tr><td colspan="'+(isAdmin()?10:9)+'" style="color:#e24b4a">加载失败：'+esc(e.message)+'</td></tr>'; }
+}
+async function markHandled(id){
+  try {
+    const { error } = await sb.from('outbound_requests').update({ status:'handled', handled_at:new Date().toISOString(), handled_by: AUTH.real_name||'' }).eq('id', id);
+    if (error) throw error;
+    toast('已标记为处理');
+    await loadRequests();
+  } catch(e){ toast(e.message, true); }
+}
+async function processOutbound(id){
+  try {
+    const { data: req, error: e1 } = await sb.from('outbound_requests').select('*').eq('id', id).maybeSingle();
+    if (e1) throw new Error('查询申请失败：'+e1.message);
+    if (!req){ toast('申请不存在', true); return; }
+    // 预检库存
+    const { data: mat } = await sb.from('materials').select('id,name,stock,unit').eq('id', req.material_id).maybeSingle();
+    if (!mat) throw new Error('关联物料「'+req.material_name+'」已在系统中删除，无法出库');
+    const need = Number(req.qty)||0;
+    const have = Number(mat.stock)||0;
+    if (need > have) {
+      const msg = '【库存不足】'+mat.name+' 当前库存 '+have+' '+mat.unit+'，申请数量 '+need+' '+mat.unit+'，无法出库。\n请先通过「入库管理」补充库存后再处理。';
+      toast(msg, true); return;
+    }
+    if(!confirm('确认出库？\n\n物料：'+mat.name+'\n数量：'+need+' '+mat.unit+'\n当前库存：'+have+' '+mat.unit+'\n\n出库后剩余：'+(have-need)+' '+mat.unit)) return;
+    const { error: e2 } = await sb.rpc('do_outbound', {
+      p_material_id: req.material_id,
+      p_type: req.req_type || '领用出库',
+      p_qty: req.qty,
+      p_date: today(),
+      p_receiver: req.applicant_name || req.applicant_email || authName(),
+      p_purpose: req.reason || null,
+      p_remark: ('来自出库申请 #'+id+'：'+(req.reason||'')) || null,
+      p_operator: AUTH.real_name || authName(),
+    });
+    if (e2) throw new Error(e2.message || JSON.stringify(e2));
+    const { error: e3 } = await sb.from('outbound_requests').update({ status:'handled', handled_at:new Date().toISOString(), handled_by: AUTH.real_name||'' }).eq('id', id);
+    if (e3) throw new Error('更新状态失败：'+e3.message);
+    toast('✅ 已出库 — '+mat.name+' 扣减 '+need+' '+mat.unit+'，剩余 '+(have-need)+' '+mat.unit);
+    await loadRequests();
+    await loadSnapshot();
+  } catch(e){ toast('❌ 出库失败：'+e.message, true); }
+}
+async function loadWecom(){
+  try {
+    const { data, error } = await sb.from('system_config').select('value').eq('key','wecom_webhook_url').maybeSingle();
+    if (!error && data && data.value) document.getElementById('wx_url').value = data.value;
+  } catch(e){}
+}
+async function saveWecom(){
+  const url = document.getElementById('wx_url').value.trim();
+  const msg = document.getElementById('wx_msg');
+  if (!url){ msg.innerHTML='<span style="color:#e24b4a">请填写 Webhook 地址</span>'; return; }
+  msg.textContent='保存中…';
+  try {
+    const { data, error } = await sb.rpc('save_system_config', { p_key:'wecom_webhook_url', p_value:url });
+    if (error) throw error;
+    msg.innerHTML = '<span style="color:#2e7d32">✅ 已保存</span>';
+  } catch(e){ msg.innerHTML = '<span style="color:#e24b4a">保存失败：'+esc(e.message)+'</span>'; }
+}
+async function testWecom(){
+  const msg = document.getElementById('wx_msg');
+  const url = await getWecomUrl();
+  if (!url){ msg.innerHTML='<span style="color:#e65100">⚠️ 请先填写并保存 Webhook 地址</span>'; return; }
+  msg.textContent='发送中…';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token || '';
+    const resp = await fetch(EDGE_WECOM_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ content: '## ✅ 企业微信通知测试成功\n> 教务主任，系统已能向你推送消息。\n> 老师提交出库申请时，你会第一时间收到提醒。' })
+    });
+    const data = await resp.json();
+    msg.innerHTML = (data && data.ok)
+      ? '<span style="color:#2e7d32">✅ 测试消息已发送，请查看企业微信</span>'
+      : '<span style="color:#e24b4a">发送失败：'+esc((data&&data.msg)||resp.status)+'</span>';
+  } catch(e){ msg.innerHTML = '<span style="color:#e24b4a">请求异常：'+esc(e.message)+'</span>'; }
+}
+
+// ---------- 备份 / 恢复 ----------
+function backupData(){
+  const data = { materials:getMaterials(), inbound:getInbound(), outbound:getOutbound(), adjustments:getAdjustments(), exported_at:new Date().toISOString(), _backup:true };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='物料系统备份_'+today()+'.json'; a.click(); URL.revokeObjectURL(a.href);
+  toast('已导出备份文件，请妥善保存');
+}
+function restoreData(){
+  toast('云端版数据由服务器统一管理，无需本地恢复', true);
+}
+
+// ---------- 账户管理（教务主任专用）----------
+const EDGE_CREATE_TEACHER = 'https://mjucegnphdjpuxiyowrb.supabase.co/functions/v1/create-teacher';
+const EDGE_WECOM_PROXY = 'https://mjucegnphdjpuxiyowrb.supabase.co/functions/v1/wecom-proxy';
+
+async function viewAccounts(){
+  let html = `<h3>账户管理（教务主任专用）</h3>
+    <div class="hint" style="background:#e8f5e9;border:1px solid #a5d6a7;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.6">
+      <b>✅ 可直接在系统内新建教师账号</b>：填英文账号（如 wang）、初始密码、姓名、角色，点「创建账号」即可，系统自动生成邮箱（wang@yjjh.edu），老师立刻能登录。
+    </div>
+    <div class="panel">
+      <h4>新建 / 设置账号</h4>
+      <div class="toolbar">
+        <input id="au_email" placeholder="登录账号（如 wang，自动生成 wang@yjjh.edu）" style="width:220px">
+        <input id="au_pwd" type="text" placeholder="初始密码" style="width:140px" value="123456">
+        <input id="au_name" placeholder="姓名（如 王老师）" style="width:150px">
+        <select id="au_role"><option value="教师">教师（可入库/出库）</option><option value="教务主任">教务主任（含账户管理）</option></select>
+        <button class="btn green" onclick="createAccount()">创建账号</button>
+      </div>
+      <div id="au_msg" style="font-size:13px;color:#888;margin-top:6px"></div>
+    </div>
+    <h4 style="margin:14px 0 10px;font-size:15px">已有账号</h4>
+    <table><thead><tr><th>邮箱</th><th>姓名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody id="au_body"></tbody></table>`;
+  document.getElementById('mainView').innerHTML = html;
+  await loadAccounts();
+}
+async function loadAccounts(){
+  try {
+    const { data, error } = await sb.rpc('admin_list_users');
+    if (error) throw error;
+    const rows = (data||[]).map(u=>`<tr>
+      <td>${esc(u.email)}</td><td>${esc(u.real_name||'')}</td><td>${esc(u.role||'')}</td>
+      <td>${u.confirmed?'<span class="tag ok">已激活</span>':'<span class="tag warn">待激活</span>'}</td>
+      <td>${u.email==='jiaowu@yjjh.edu'?'<span style="color:#999">主账号</span>':'<button class="btn sm blue" onclick="resetPwd(\''+esc(u.email)+'\')">重置密码</button> <button class="btn sm red" onclick="deleteAccount(\''+esc(u.email)+'\')">删除</button>'}</td>
+    </tr>`).join('');
+    document.getElementById('au_body').innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:#999;padding:18px">暂无账号</td></tr>';
+  } catch(e){ document.getElementById('au_body').innerHTML = '<tr><td colspan="5" style="color:#e24b4a">加载失败：'+esc(e.message)+'</td></tr>'; }
+}
+async function createAccount(){
+  let email=document.getElementById('au_email').value.trim();
+  const pwd=document.getElementById('au_pwd').value;
+  const name=document.getElementById('au_name').value.trim();
+  const role=document.getElementById('au_role').value;
+  const msg=document.getElementById('au_msg');
+  if(!email||!pwd){ msg.innerHTML='<span style="color:#e24b4a">请填写账号与初始密码</span>'; return; }
+  // 若输入不含 @，自动补全为 @yjjh.edu
+  if (!email.includes('@')) email = email + '@yjjh.edu';
+  // 校验只允许英文、数字、下划线、点、连字符
+  if (!/^[a-zA-Z0-9._+-]+@yjjh\.edu$/.test(email)){
+    msg.innerHTML='<span style="color:#e24b4a">账号只能包含英文字母、数字、下划线、点、连字符</span>'; return;
+  }
+  msg.textContent='创建中…';
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess?.session?.access_token;
+    if(!token){ msg.innerHTML='<span style="color:#e24b4a">登录态失效，请刷新页面重新登录</span>'; return; }
+    const res = await fetch(EDGE_CREATE_TEACHER, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ action:'create', email, password:pwd, role, real_name:name })
+    });
+    const out = await res.json();
+    if(!res.ok){ msg.innerHTML = '<span style="color:#e24b4a">失败：'+esc(out.error||res.status)+'</span>'; return; }
+    msg.innerHTML = '<span style="color:#2e7d32">✅ ' + esc(out.msg||'创建成功') + '</span>';
+    document.getElementById('au_email').value=''; document.getElementById('au_pwd').value=''; document.getElementById('au_name').value='';
+    await loadAccounts();
+  } catch(e){ msg.innerHTML = '<span style="color:#e24b4a">失败：'+esc(e.message)+'</span>'; }
+}
+async function deleteAccount(email){
+  if(!confirm('确认删除账号 '+email+'？该老师将无法再登录。')) return;
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess?.session?.access_token;
+    if(!token){ toast('登录态失效，请刷新页面', true); return; }
+    const res = await fetch(EDGE_CREATE_TEACHER, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ action:'delete', email })
+    });
+    const out = await res.json();
+    if(!res.ok){ toast('删除失败：'+(out.error||res.status+' '+JSON.stringify(out)), true); return; }
+    toast(out.msg||'已删除');
+    await loadAccounts();
+  } catch(e){ toast('删除请求异常：'+e.message, true); }
+}
+
+// 重置某个教师账号的密码（教务主任专用，走 Edge Function 的 reset_password）
+function genRandomPwd(){
+  const cs = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let s=''; for(let i=0;i<10;i++) s += cs[Math.floor(Math.random()*cs.length)];
+  return s;
+}
+function resetPwd(email){
+  showModal(`<h4>重置密码 · ${esc(email)}</h4>
+    <p class="hint" style="margin-left:0">为该老师设置新密码，可直接使用下方随机生成的强密码，也可自行修改。重置后请转告老师用新密码登录。</p>
+    <div class="form-row"><label>新密码</label><input id="rp_pwd" value="${genRandomPwd()}" style="flex:1"></div>
+    <div id="rp_msg" style="font-size:13px;color:#888;margin-top:4px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('rp_pwd').value=genRandomPwd()">🎲 换一个</button>
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn green" onclick="doResetPwd('${esc(email)}')">确认重置</button>
+    </div>`);
+}
+async function doResetPwd(email){
+  const pwd = (document.getElementById('rp_pwd').value||'').trim();
+  if(!pwd || pwd.length < 6){ document.getElementById('rp_msg').innerHTML='<span style="color:#e24b4a">密码至少 6 位</span>'; return; }
+  const msg = document.getElementById('rp_msg');
+  msg.textContent='重置中…';
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess?.session?.access_token;
+    if(!token){ msg.innerHTML='<span style="color:#e24b4a">登录态失效，请刷新页面重新登录</span>'; return; }
+    const res = await fetch(EDGE_CREATE_TEACHER, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ action:'reset_password', email, password: pwd })
+    });
+    const out = await res.json();
+    if(!res.ok){ msg.innerHTML='<span style="color:#e24b4a">失败：'+esc(out.error||res.status)+'</span>'; return; }
+    msg.innerHTML='<span style="color:#2e7d32">✅ '+esc(out.msg||'密码已重置')+'<br>新密码：<b>'+esc(pwd)+'</b></span>';
+  } catch(e){ msg.innerHTML='<span style="color:#e24b4a">失败：'+esc(e.message)+'</span>'; }
+}
+
+// ---------- XLSX 检查 ----------
+function ensureXLSX(){ if (typeof XLSX==='undefined'){ toast('Excel 组件未加载，请检查网络后重试', true); throw new Error('XLSX not loaded'); } }
+
+// ---------- 启动 ----------
+(async function () {
+  if (!(await checkLogin())) {
+    document.getElementById('lg_pwd').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+    document.getElementById('lg_user').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('lg_pwd').focus(); });
+  }
+})();
+document.getElementById('modalMask').addEventListener('click', e=>{ if(e.target.id==='modalMask') closeModal(); });
+</script>
+</body>
+</html>
