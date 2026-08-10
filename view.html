@@ -116,7 +116,7 @@ async function load(manual){
 }
 function render(d){
   const mats = d.materials || [];
-  const warns = mats.filter(m=>m.stock < (m.safety_stock||0)).length;
+  const warns = mats.filter(m => (m.stock||0) <= 0 || (m.stock||0) < (m.safety_stock||0)).length;
   const total = mats.reduce((s,m)=>s+(Number(m.stock)||0),0);
   document.getElementById('cards').innerHTML =
     `<div class="card"><div class="n">${mats.length}</div><div class="l">物料种类</div></div>`+
