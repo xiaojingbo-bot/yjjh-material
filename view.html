@@ -45,6 +45,8 @@
   .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   #vtoast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:8px; font-size:14px; z-index:99; opacity:0; transition:opacity .25s; pointer-events:none; }
   #vtoast.show { opacity:.95; } #vtoast.err { background:#e24b4a; }
+  .stock-box { background:#f3f8ff; border:1px solid #cfe0ff; color:#2f6fed; border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 </style>
 </head>
 <body>
@@ -66,7 +68,11 @@
     <h2>⬇ 最近 7 天入库</h2>
     <table><thead><tr><th>日期</th><th>物料</th><th>类型</th><th>数量</th><th>经办</th></thead><tbody id="ib"></tbody></table>
   </section>
-  <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新</div>
+  <section id="pr_section">
+    <h2>🛒 采购申请</h2>
+    <div id="pr_area"></div>
+  </section>
+  <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新（采购申请需教师登录后查看）</div>
 
   <div class="modal-mask" id="vmask"><div class="modal" id="vmodal"></div></div>
 
@@ -104,6 +110,7 @@ async function load(manual){
     ]);
     if (m.error) throw m.error;
     if (ib.error) throw ib.error;
+    PR_MATS = m.data || [];
     // 仅展示最近 7 天入库，按日期倒序、同日按 id 倒序
     const inbound = (ib.data || []).sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.id||0)-(a.id||0));
     render({ materials: m.data || [], inbound });
@@ -165,6 +172,7 @@ function renderAuth(){
   } else {
     el.innerHTML = '<button class="btn" onclick="showLogin()">教师登录</button>';
   }
+  renderPurchaseArea();
 }
 function showLogin(){
   showV('<h4>教师登录</h4>'
@@ -212,6 +220,203 @@ async function teacherLogout(){
   TEACHER = null;
   renderAuth();
   vtoast('已退出登录');
+}
+
+// ---------- 采购申请（教师看板展示 + 登录后提交）----------
+// 说明：采购申请表对 anon 不可读（RLS 仅 authenticated 可读），故匿名看板只显示「登录后查看」提示；
+// 教师登录后，其会话 JWT 满足 pr_select 策略，即可看到全校采购申请，并可在此直接提交。
+const PR_STATUS = {
+  submitted: { label:'已申请', cls:'ok' },
+  rejected:  { label:'已驳回', cls:'danger' },
+  pending:   { label:'已申请', cls:'ok' },
+  approved:  { label:'已申请', cls:'ok' },
+  purchased: { label:'已申请', cls:'ok' }
+};
+const isPRRejected = r => r && r.status === 'rejected';
+let PR_CACHE = [];
+let PR_MATS = [];
+let prLastTeacher = undefined;
+const EDGE_WECOM_PROXY = 'https://mjucegnphdjpuxiyowrb.supabase.co/functions/v1/wecom-proxy';
+
+function normName(s){ return (s||'').toString().toLowerCase().replace(/[\s\-_/（）()【】\[\]]/g,''); }
+function matchStockItemsV(name){
+  const key = normName(name);
+  if (key.length < 2) return [];
+  return (PR_MATS||[]).filter(m=>{
+    const mn = normName(m.name);
+    if (!mn) return false;
+    return mn === key || mn.includes(key) || key.includes(mn);
+  });
+}
+
+// 根据登录态渲染采购区域：未登录显示提示；已登录构建列表并刷新数据。
+// 用 prLastTeacher 记录上次的登录态，避免每 30 秒自动刷新时重置筛选/搜索框。
+function renderPurchaseArea(){
+  const area = document.getElementById('pr_area'); if(!area) return;
+  const cur = TEACHER ? TEACHER.id : null;
+  if (cur === prLastTeacher){
+    if (TEACHER) loadPurchase();           // 登录态未变，仅刷新数据（保留输入框）
+    return;
+  }
+  prLastTeacher = cur;
+  if (!TEACHER){
+    area.innerHTML = '<div class="empty">🔒 采购申请需<b>教师登录</b>后查看（全校老师均可看，提交即成立、无需审批）。 <button class="btn blue" onclick="showLogin()">教师登录</button></div>';
+    return;
+  }
+  area.innerHTML =
+    '<div class="cards" id="pr_cards"></div>'
+    + '<div class="toolbar" style="margin:10px 0 8px">'
+    +   '<button class="btn green" onclick="openPurchaseModalV()">➕ 申请采购</button>'
+    +   '<select id="pr_filter" onchange="renderPurchase()" style="padding:7px 8px;border:1px solid #ddd;border-radius:7px;font-size:13px">'
+    +     '<option value="">全部状态</option><option value="submitted">已申请</option><option value="rejected">已驳回</option>'
+    +   '</select>'
+    +   '<input id="pr_search" placeholder="🔍 搜索物品 / 申请人" oninput="renderPurchase()" style="padding:7px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;width:220px">'
+    +   '<button class="btn" onclick="loadPurchase()">↻ 刷新</button>'
+    + '</div>'
+    + '<table><thead><tr>'
+    +   '<th>提交时间</th><th>申请人</th><th>物品名称</th><th>型号/规格</th><th>数量</th>'
+    +   '<th>期望到货</th><th>预估单价</th><th>用途</th><th>状态</th>'
+    + '</tr></thead><tbody id="pr_body"></tbody></table>';
+  loadPurchase();
+}
+
+async function loadPurchase(){
+  const tb = document.getElementById('pr_body');
+  if (tb) tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px">加载中…</td></tr>';
+  try {
+    const { data, error } = await sb.from('purchase_requests').select('*').order('created_at',{ascending:false});
+    if (error) throw error;
+    PR_CACHE = data || [];
+    renderPurchase();
+  } catch(e){
+    if (tb) tb.innerHTML = '<tr><td colspan="9" style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</td></tr>';
+  }
+}
+
+function renderPurchase(){
+  const body = document.getElementById('pr_body'); if(!body) return;
+  const fs = (document.getElementById('pr_filter')||{}).value || '';
+  const q  = ((document.getElementById('pr_search')||{}).value || '').trim().toLowerCase();
+  let rows = PR_CACHE.filter(r => !fs || (fs==='rejected' ? isPRRejected(r) : !isPRRejected(r)));
+  if (q) rows = rows.filter(r => [r.item_name,r.model,r.applicant_name,r.reason].some(v=>(v||'').toLowerCase().includes(q)));
+
+  const cards = document.getElementById('pr_cards');
+  if (cards){
+    const rejected = PR_CACHE.filter(isPRRejected).length;
+    const active = PR_CACHE.length - rejected;
+    cards.innerHTML =
+      '<div class="card"><div class="n">'+PR_CACHE.length+'</div><div class="l">申请总数</div></div>'
+      + '<div class="card"><div class="n" style="color:#1d9e75">'+active+'</div><div class="l">已申请（有效）</div></div>'
+      + '<div class="card"><div class="n" style="color:#e24b4a">'+rejected+'</div><div class="l">已驳回</div></div>';
+  }
+
+  body.innerHTML = rows.length ? rows.map(r=>{
+    const st = PR_STATUS[r.status] || { label:r.status, cls:'' };
+    const note = isPRRejected(r) && r.handle_note ? '<div style="font-size:11px;color:#e24b4a;margin-top:3px">理由：'+esc(r.handle_note)+'</div>' : '';
+    return '<tr'+(isPRRejected(r)?' style="opacity:.62"':'')+'>'
+      + '<td>'+esc((r.created_at||'').replace('T',' ').slice(0,16))+'</td>'
+      + '<td>'+esc(r.applicant_name||r.applicant_email||'')+'</td>'
+      + '<td><b>'+esc(r.item_name||'')+'</b></td>'
+      + '<td>'+esc(r.model||'—')+'</td>'
+      + '<td><b>'+r.qty+'</b> '+esc(r.unit||'')+'</td>'
+      + '<td>'+esc(r.expect_date||'—')+'</td>'
+      + '<td>'+(r.est_price!=null?('¥'+r.est_price):'—')+'</td>'
+      + '<td>'+esc(r.reason||'—')+'</td>'
+      + '<td><span class="tag '+st.cls+'">'+st.label+'</span>'+note+'</td>'
+      + '</tr>';
+  }).join('') : '<tr><td colspan="9" class="empty">暂无采购申请</td></tr>';
+}
+
+async function openPurchaseModalV(){
+  if (!(PR_MATS||[]).length){
+    try { const { data } = await sb.from('materials').select('*').order('id',{ascending:true}); PR_MATS = data || []; } catch(e){}
+  }
+  showV('<h4>提交采购申请</h4>'
+    + '<p class="hint" style="margin-left:0">提交即成立、无需审批，同时自动知会教务主任企业微信。填写物品名称后会实时显示「库房现有」，提交前可先看是否已有同事申请过同款，避免重复采购。</p>'
+    + '<div class="form-row"><label>物品名称 <span style="color:#e24b4a">*</span></label><input id="pu_name" placeholder="如：数字万用表" autocomplete="off" oninput="onPurchaseNameInputV()"></div>'
+    + '<div id="pu_stockbox" class="stock-box" style="display:none;margin:-2px 0 10px 92px"></div>'
+    + '<div class="form-row"><label>型号 / 规格</label><input id="pu_model" placeholder="如：福禄克 15B+"></div>'
+    + '<div class="form-row"><label>数量 <span style="color:#e24b4a">*</span></label><input id="pu_qty" type="number" min="1" step="1" placeholder="请输入数量"></div>'
+    + '<div class="form-row"><label>单位</label><input id="pu_unit" placeholder="台 / 个 / 套 / 箱" value="个"></div>'
+    + '<div class="form-row"><label>期望到货时间</label><input id="pu_date" type="date"></div>'
+    + '<div class="form-row"><label>预估单价（元）</label><input id="pu_price" type="number" min="0" step="0.01" placeholder="可不填"></div>'
+    + '<div class="form-row"><label>购买链接</label><input id="pu_url" placeholder="https://… 商品页链接（可不填）"></div>'
+    + '<div class="form-row"><label>用途说明</label><input id="pu_reason" placeholder="如：电工实训课学生分组使用"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn green" onclick="submitPurchaseV()">提交申请</button></div>');
+}
+
+function onPurchaseNameInputV(){
+  const box = document.getElementById('pu_stockbox'); if(!box) return;
+  const name = (document.getElementById('pu_name').value||'').trim();
+  const hits = matchStockItemsV(name);
+  if (!name || !hits.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  box.innerHTML = '📦 库房现有：' + hits.map(m =>
+    '<div>　• '+esc(m.name)+(m.spec?'（'+esc(m.spec)+'）':'')+'：<b>'+Number(m.stock||0)+'</b> '+esc(m.unit||'')+'（安全库存线 ≥'+Number(m.safety_stock||0)+'）</div>'
+  ).join('');
+}
+
+async function pushWecomV(content){
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token || '';
+    const resp = await fetch(EDGE_WECOM_PROXY, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ content })
+    });
+    const data = await resp.json();
+    return data && data.ok;
+  } catch(e){ console.warn('企业微信推送失败', e); return false; }
+}
+
+async function submitPurchaseV(){
+  const name = (document.getElementById('pu_name').value||'').trim();
+  const qty  = parseFloat(document.getElementById('pu_qty').value);
+  if(!name){ alert('请填写物品名称'); return; }
+  if(!qty || qty<=0){ alert('请输入有效的采购数量'); return; }
+  const model  = (document.getElementById('pu_model').value||'').trim() || null;
+  const unit   = (document.getElementById('pu_unit').value||'').trim() || null;
+  const date   = document.getElementById('pu_date').value || null;
+  const priceV = parseFloat(document.getElementById('pu_price').value);
+  const price  = isNaN(priceV) ? null : priceV;
+  let url = (document.getElementById('pu_url').value||'').trim() || null;
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const reason = (document.getElementById('pu_reason').value||'').trim() || null;
+
+  const stockHits = matchStockItemsV(name).filter(m => Number(m.stock||0) > Number(m.safety_stock||0));
+  if (stockHits.length){
+    const detail = stockHits.map(m =>
+      '　• '+m.name+(m.spec?'（'+m.spec+'）':'')+'：现有 '+Number(m.stock||0)+' '+m.unit+'（安全线≥'+Number(m.safety_stock||0)+'）'
+    ).join('\n');
+    const ok = confirm('📦 库房已有该物料，且库存充足\n\n'+detail+'\n\n本次申请采购：'+name+' × '+qty+' '+(unit||'')+'\n\n如果只是课堂领用，请改用「出库申请」直接领取，无需采购。\n\n确认仍要提交这条采购申请吗？');
+    if (!ok) return;
+  }
+
+  try {
+    const { error } = await sb.from('purchase_requests').insert({
+      item_name:name, model, qty, unit, expect_date:date, est_price:price, buy_url:url, reason
+    });
+    if (error) throw error;
+
+    const who = (TEACHER.user_metadata && TEACHER.user_metadata.real_name) || TEACHER.email || '未知';
+    const content = '## 🛒 采购申请知会（无需审批）\n'
+      + '> **申请人**：'+who+'\n'
+      + '> **物品名称**：'+name+'\n'
+      + '> **型号规格**：'+(model||'—')+'\n'
+      + '> **数量**：'+qty+' '+(unit||'')+'\n'
+      + '> **期望到货**：'+(date||'—')+'\n'
+      + (price!=null ? '> **预估单价**：¥'+price+'（合计约 ¥'+(price*qty).toFixed(2)+'）\n' : '')
+      + '> **用途**：'+(reason||'（未填写）')+'\n'
+      + (stockHits.length ? '> **⚠️ 库房现有**：'+stockHits.map(m=>m.name+' '+Number(m.stock||0)+m.unit+'（安全线≥'+Number(m.safety_stock||0)+'）').join('；')+'\n' : '')
+      + '> **提交时间**：'+new Date().toLocaleString('zh-CN')+'\n'
+      + '> 该申请已直接进入采购计划，<font color="comment">如无需采购可在系统中驳回</font>\n'
+      + '> [👉 进入系统查看采购计划](https://xiaojingbo-bot.github.io/yjjh-material/?view=purchase)';
+    const pushed = await pushWecomV(content);
+    closeV();
+    vtoast(pushed ? '采购申请已提交并知会教务主任企业微信' : '采购申请已提交（未配置企业微信通知）');
+    await loadPurchase();
+  } catch(e){ vtoast('提交失败：'+e.message, true); }
 }
 </script>
 </body>
