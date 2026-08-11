@@ -34,6 +34,7 @@
   /* 教师登录 / 修改密码 */
   .btn { padding:8px 14px; border:none; border-radius:7px; font-size:13px; cursor:pointer; background:#0c447c; color:#fff; }
   .btn.blue { background:#2f6fed; } .btn.green { background:#1d9e75; } .btn.red { background:#e24b4a; }
+  .btn.sm { padding:4px 10px; font-size:12px; }
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; }
   .modal-mask.show { display:flex; }
   .modal { background:#fff; border-radius:12px; padding:22px 24px; width:420px; max-width:92vw; box-shadow:0 10px 40px rgba(0,0,0,.3); }
@@ -72,7 +73,11 @@
     <h2>🛒 采购申请</h2>
     <div id="pr_area"></div>
   </section>
-  <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新（采购申请需教师登录后查看）</div>
+  <section id="ti_section">
+    <h2>🔄 教室物料库</h2>
+    <div id="ti_area"></div>
+  </section>
+  <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新（采购申请与教室物料流转需教师登录后查看）</div>
 
   <div class="modal-mask" id="vmask"><div class="modal" id="vmodal"></div></div>
 
@@ -173,6 +178,7 @@ function renderAuth(){
     el.innerHTML = '<button class="btn" onclick="showLogin()">教师登录</button>';
   }
   renderPurchaseArea();
+  renderTransferArea();
 }
 function showLogin(){
   showV('<h4>教师登录</h4>'
@@ -417,6 +423,250 @@ async function submitPurchaseV(){
     vtoast(pushed ? '采购申请已提交并知会教务主任企业微信' : '采购申请已提交（未配置企业微信通知）');
     await loadPurchase();
   } catch(e){ vtoast('提交失败：'+e.message, true); }
+}
+
+// ---------- 教室物料库 / 物料流转（教师看板登录态）----------
+// 与采购申请一致：匿名看板只显示「登录后查看」提示；教师登录后（会话 JWT 满足 RLS）即可查看本人教室物料并流转。
+let TI_CACHE = [];
+let TI_ALL = false;          // 教务主任：是否查看全校
+let TI_VIEW_TEACHERS = [];   // 可流转的老师列表（list_teachers 返回）
+let tiLastTeacher = undefined;
+
+function isViewAdmin(){
+  const role = (TEACHER && TEACHER.user_metadata && TEACHER.user_metadata.role) || '';
+  return ['教务主任','校长'].includes(role);
+}
+
+// 登录态渲染：未登录显示提示；已登录构建主视图并在 30 秒刷新时仅重载数据（保留输入框）。
+function renderTransferArea(){
+  const area = document.getElementById('ti_area'); if(!area) return;
+  const cur = TEACHER ? TEACHER.id : null;
+  if (cur === tiLastTeacher){
+    if (TEACHER) loadTransferV();   // 登录态未变，仅刷新数据（保留搜索框）
+    return;
+  }
+  tiLastTeacher = cur;
+  if (!TEACHER){
+    area.innerHTML = '<div class="empty">🔒 教室物料库需<b>教师登录</b>后查看，可登记本人教室物料并批量流转给其他老师。 <button class="btn blue" onclick="showLogin()">教师登录</button></div>';
+    return;
+  }
+  viewTransferV();
+}
+
+async function viewTransferV(){
+  const admin = isViewAdmin();
+  let html = '<div class="cards" id="ti_cards"></div>'
+    + '<div class="toolbar" style="margin:10px 0 8px">'
+    + '<button class="btn green" onclick="openAddItemModalV()">➕ 登记 / 增加物料</button>'
+    + '<button class="btn blue" id="ti_transfer_btn" onclick="openTransferModalV()" disabled>🔄 流转给…（<span id="ti_selcount">0</span>）</button>'
+    + '<input id="ti_search" placeholder="🔍 搜索物品 / 型号" oninput="renderTransferV()" style="padding:7px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;width:200px">'
+    + '<button class="btn" onclick="loadTransferV()">↻ 刷新</button>';
+  if (admin) html += '<label style="font-size:13px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ti_all" onchange="TI_ALL=this.checked;viewTransferV()"> 查看全校</label>';
+  html += '</div>'
+    + '<table><thead><tr>'
+    + '<th style="width:34px"><input type="checkbox" id="ti_chkall" onclick="toggleTiAllV(this.checked)"></th>'
+    + '<th>物品名称</th><th>型号</th><th>数量</th><th>单位</th>';
+  if (TI_ALL) html += '<th>持有人</th>';
+  html += '<th>来源</th><th>更新时间</th><th>操作</th>'
+    + '</tr></thead><tbody id="ti_body"></tbody></table>';
+  document.getElementById('ti_area').innerHTML = html;
+  await loadTransferV();
+}
+
+async function loadTransferV(){
+  const body = document.getElementById('ti_body');
+  if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px">加载中…</td></tr>';
+  try {
+    let q = sb.from('teacher_inventory').select('*');
+    if (!TI_ALL) q = q.eq('holder_email', TEACHER.email);
+    q = q.order('updated_at', { ascending: false });
+    const { data, error } = await q;
+    if (error) throw error;
+    TI_CACHE = data || [];
+    renderTransferV();
+    if (!TI_VIEW_TEACHERS.length){
+      const { data: td, error: te } = await sb.rpc('list_teachers');
+      if (!te) TI_VIEW_TEACHERS = td || [];
+    }
+  } catch(e){
+    if (body) body.innerHTML = '<tr><td colspan="9" style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</td></tr>';
+  }
+}
+
+function renderTransferV(){
+  const body = document.getElementById('ti_body'); if(!body) return;
+  const q = ((document.getElementById('ti_search')||{}).value||'').trim().toLowerCase();
+  let rows = TI_CACHE.slice();
+  if (q) rows = rows.filter(r => (r.item_name||'').toLowerCase().includes(q) || (r.model||'').toLowerCase().includes(q));
+
+  const cards = document.getElementById('ti_cards');
+  if (cards){
+    const kinds = rows.length;
+    const totalQty = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+    cards.innerHTML =
+      '<div class="card"><div class="n">'+kinds+'</div><div class="l">物料种类</div></div>'
+      + '<div class="card"><div class="n">'+totalQty+'</div><div class="l">在库总数量</div></div>';
+  }
+
+  const showHolder = TI_ALL;
+  body.innerHTML = rows.length ? rows.map(r=>{
+    const cb = '<input type="checkbox" class="ti_chk" value="'+esc(r.id)+'" onchange="updateTiSelV()">';
+    const ops = '<button class="btn sm" onclick="adjustItemV(\''+esc(r.id)+'\')">调整</button> <button class="btn sm red" onclick="deleteItemV(\''+esc(r.id)+'\')">删除</button>';
+    return '<tr data-id="'+esc(r.id)+'">'
+      + '<td>'+cb+'</td>'
+      + '<td><b>'+esc(r.item_name)+'</b></td>'
+      + '<td>'+esc(r.model||'—')+'</td>'
+      + '<td><b>'+r.qty+'</b></td>'
+      + '<td>'+esc(r.unit||'')+'</td>'
+      + (showHolder?'<td>'+esc(r.holder_name||r.holder_email||'')+'</td>':'')
+      + '<td>'+esc(r.source||'—')+'</td>'
+      + '<td>'+esc((r.updated_at||'').replace('T',' ').slice(0,16))+'</td>'
+      + '<td>'+ops+'</td>'
+    + '</tr>';
+  }).join('') : '<tr><td colspan="'+(showHolder?9:8)+'" style="text-align:center;color:#999;padding:20px">'+(TI_ALL?'暂无教室物料记录':'你的教室物料库还是空的，点「登记 / 增加物料」添加')+'</td></tr>';
+  updateTiSelV();
+}
+
+function updateTiSelV(){
+  const cnt = document.querySelectorAll('.ti_chk:checked').length;
+  const sc = document.getElementById('ti_selcount'); if(sc) sc.textContent = cnt;
+  const btn = document.getElementById('ti_transfer_btn'); if(btn) btn.disabled = cnt===0;
+}
+function toggleTiAllV(v){
+  document.querySelectorAll('.ti_chk').forEach(c=>c.checked=v);
+  updateTiSelV();
+}
+
+// 登记 / 增加本人教室物料（同名同型号累加）
+function openAddItemModalV(){
+  showV('<h4>登记 / 增加教室物料</h4>'
+    + '<p class="hint" style="margin-left:0">填写你教室当前拥有的物料。若同名同型号已存在，将<b>累加</b>到现有数量。</p>'
+    + '<div class="form-row"><label>物品名称 <span style="color:#e24b4a">*</span></label><input id="ti_name" placeholder="如：数字万用表" autocomplete="off"></div>'
+    + '<div class="form-row"><label>型号 / 规格</label><input id="ti_model" placeholder="可不填"></div>'
+    + '<div class="form-row"><label>数量 <span style="color:#e24b4a">*</span></label><input id="ti_qty" type="number" min="1" step="1" placeholder="请输入数量"></div>'
+    + '<div class="form-row"><label>单位</label><input id="ti_unit" placeholder="台 / 个 / 套" value="个"></div>'
+    + '<div class="form-row"><label>来源说明</label><input id="ti_source" placeholder="如：仓库出库 / 课堂领用" value="手工登记"></div>'
+    + '<div id="ti_msg" style="font-size:13px;color:#888;min-height:16px"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn green" onclick="submitAddItemV()">保存</button></div>');
+}
+async function submitAddItemV(){
+  const name = (document.getElementById('ti_name').value||'').trim();
+  const qty = parseInt(document.getElementById('ti_qty').value,10);
+  if(!name){ vtoast('请填写物品名称', true); return; }
+  if(!qty || qty<=0){ vtoast('请输入有效数量', true); return; }
+  const model = (document.getElementById('ti_model').value||'').trim()||'';
+  const unit = (document.getElementById('ti_unit').value||'').trim()||'';
+  const source = (document.getElementById('ti_source').value||'').trim()||'手工登记';
+  const msg = document.getElementById('ti_msg'); msg.textContent='保存中…';
+  try {
+    const me = TEACHER.email;
+    const meName = (TEACHER.user_metadata && TEACHER.user_metadata.real_name) || '';
+    const { data: ex, error: e1 } = await sb.from('teacher_inventory')
+      .select('id,qty').eq('holder_email', me).eq('item_name', name).eq('model', model).maybeSingle();
+    if (e1) throw e1;
+    if (ex){
+      const { error: e2 } = await sb.from('teacher_inventory').update({ qty: Number(ex.qty)+qty, updated_at:new Date().toISOString() }).eq('id', ex.id);
+      if (e2) throw e2;
+    } else {
+      const { error: e3 } = await sb.from('teacher_inventory').insert({
+        holder_email: me, holder_name: meName, item_name: name, model, unit, qty, source
+      });
+      if (e3) throw e3;
+    }
+    closeV();
+    vtoast('已保存到我的教室物料库');
+    await loadTransferV();
+  } catch(e){ msg.innerHTML='<span style="color:#e24b4a">保存失败：'+esc(e.message)+'</span>'; }
+}
+
+// 批量流转给其他老师
+async function openTransferModalV(){
+  const sel = [...document.querySelectorAll('.ti_chk:checked')];
+  if(!sel.length){ vtoast('请先勾选要流转的物料', true); return; }
+  const ids = new Set(sel.map(c=>c.value));
+  const items = TI_CACHE.filter(r=>ids.has(r.id));
+  if(!TI_VIEW_TEACHERS.length){
+    const { data, error } = await sb.rpc('list_teachers');
+    if(error){ vtoast('获取老师列表失败：'+error.message, true); return; }
+    TI_VIEW_TEACHERS = data||[];
+  }
+  if(!TI_VIEW_TEACHERS.length){ vtoast('暂无可流转的老师（请先在账户管理创建老师账号）', true); return; }
+  const opts = TI_VIEW_TEACHERS.map(t=>'<option value="'+esc(t.email)+'">'+esc(t.real_name||t.email)+(t.role?('（'+esc(t.role)+'）'):'')+'</option>').join('');
+  const rows = items.map((r,i)=>'<div class="form-row" style="align-items:center">'
+    + '<label style="width:auto;min-width:170px">'+esc(r.item_name)+(r.model?' ['+esc(r.model)+']':'')+'</label>'
+    + '<input type="number" min="1" max="'+r.qty+'" value="'+r.qty+'" id="tf_qty_'+i+'" style="width:90px"> <span style="color:#888">/ 共 '+r.qty+' '+esc(r.unit||'')+'</span>'
+    + '<input type="hidden" id="tf_name_'+i+'" value="'+esc(r.item_name)+'">'
+    + '<input type="hidden" id="tf_model_'+i+'" value="'+esc(r.model||'')+'">'
+    + '<input type="hidden" id="tf_unit_'+i+'" value="'+esc(r.unit||'')+'">'
+    + '<input type="hidden" id="tf_from_'+i+'" value="'+esc(r.holder_email)+'">'
+    + '</div>').join('');
+  showV('<h4>流转物料给其他老师</h4>'
+    + '<div class="form-row"><label>接收老师</label><select id="tf_to" style="flex:1">'+opts+'</select></div>'
+    + '<div style="margin:8px 0 4px;font-size:13px;color:#555">勾选的物料及流转数量：</div>'
+    + rows
+    + '<div id="tf_msg" style="font-size:13px;color:#888;min-height:16px;margin-top:6px"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn blue" onclick="submitTransferV('+items.length+')">确认流转</button></div>');
+}
+async function submitTransferV(n){
+  const to = document.getElementById('tf_to').value;
+  if(!to){ vtoast('请选择接收老师', true); return; }
+  const items = [];
+  for(let i=0;i<n;i++){
+    const qty = parseInt(document.getElementById('tf_qty_'+i).value,10);
+    const name = document.getElementById('tf_name_'+i).value;
+    const model = document.getElementById('tf_model_'+i).value;
+    const unit = document.getElementById('tf_unit_'+i).value;
+    const from = document.getElementById('tf_from_'+i).value;
+    if(!qty || qty<=0){ vtoast('「'+name+'」流转数量需大于 0', true); return; }
+    items.push({ item_name:name, model, unit, qty, holder_email:from });
+  }
+  // 教务主任代转时，要求所选物料同属一位老师
+  const fromEmail = isViewAdmin() ? items[0].holder_email : TEACHER.email;
+  if (isViewAdmin() && items.some(r=>r.holder_email !== fromEmail)){
+    vtoast('请只选择同一位老师的物料进行流转', true); return;
+  }
+  const msg = document.getElementById('tf_msg'); msg.textContent='流转中…';
+  try {
+    const { error } = await sb.rpc('do_transfer', { p_from_email: fromEmail, p_to_email: to, p_items: items });
+    if (error) throw error;
+    const tName = (TI_VIEW_TEACHERS.find(t=>t.email===to)||{}).real_name || to;
+    const meName = (TEACHER.user_metadata && TEACHER.user_metadata.real_name) || TEACHER.email;
+    const detail = items.map(r=>r.item_name+(r.model?'['+r.model+']':'')+' × '+r.qty+' '+(r.unit||'')).join('；');
+    const content = '## 🔄 物料流转知会\n'
+      + '> **转出**：' + meName + '\n'
+      + '> **接收**：' + tName + '\n'
+      + '> **物料**：' + detail + '\n'
+      + '> **时间**：' + new Date().toLocaleString('zh-CN');
+    await pushWecomV(content);
+    closeV();
+    vtoast('✅ 已流转给 ' + tName);
+    await loadTransferV();
+  } catch(e){ msg.innerHTML='<span style="color:#e24b4a">流转失败：'+esc(e.message)+'</span>'; }
+}
+
+// 调整 / 删除本人（或教务主任代管）教室物料
+async function deleteItemV(id){
+  const row = TI_CACHE.find(r=>r.id===id);
+  if(!confirm('确认从教室物料库删除「'+(row?row.item_name:'该物料')+'」？')) return;
+  try {
+    const { error } = await sb.from('teacher_inventory').delete().eq('id', id);
+    if (error) throw error;
+    vtoast('已删除');
+    await loadTransferV();
+  } catch(e){ vtoast('删除失败：'+e.message, true); }
+}
+async function adjustItemV(id){
+  const row = TI_CACHE.find(r=>r.id===id);
+  const v = prompt('调整「'+(row?row.item_name:'')+'」的数量为：', row?row.qty:0);
+  if(v===null) return;
+  const qty = parseInt(v,10);
+  if(isNaN(qty)||qty<0){ vtoast('数量无效', true); return; }
+  try {
+    const { error } = await sb.from('teacher_inventory').update({ qty, updated_at:new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    vtoast('已更新数量');
+    await loadTransferV();
+  } catch(e){ vtoast('更新失败：'+e.message, true); }
 }
 </script>
 </body>
