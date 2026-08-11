@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260811c</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260812a</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -129,6 +129,7 @@ const LOCATIONS = [];
 ['左','中','右'].forEach(s => { for (let i=1;i<=5;i++) LOCATIONS.push(s+i+'层'); });
 const INBOUND_TYPES = ['采购入库','退货入库','调拨入库','其他'];
 const OUTBOUND_TYPES = ['领用出库','调拨出库','损耗出库','其他'];
+let OB_TEACHERS = [];
 const CATEGORIES = ['实训设备','工具耗材','电子元件','教材资料','其他'];
 const UNITS = ['台','个','套','本','米','千克'];
 
@@ -303,9 +304,9 @@ function viewMaterials(){
         <option value="">全部状态</option><option value="ok">充足</option><option value="warn">库存预警</option><option value="danger">缺货</option>
       </select>
       <button class="btn" onclick="refreshMaterials()" id="m_refresh_btn">↻ 刷新</button>
-      ${isAdmin()?'<button class="btn" style="margin-left:auto" onclick="openAdjustModal()">📊 库存盘点 / 调整</button><button class="btn blue" onclick="viewAdjustLog()">📋 盘点记录</button>':''}
+      ${isAdmin()?'<button class="btn" style="margin-left:auto" onclick="openAdjustModal()">📊 库存盘点 / 调整</button>      <button class="btn blue" onclick="viewAdjustLog()">📋 盘点记录</button>':''}
     </div>
-    <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th style="background:#eef4ff;color:#2f6fed">当前库存</th><th style="color:#999;font-weight:400">安全库存线</th><th>状态</th>${isAdmin()?'<th>操作</th>':''}</tr></thead><tbody id="m_body"></tbody></table>`;
+    <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th style="background:#eef4ff;color:#2f6fed">当前库存</th><th style="color:#999;font-weight:400">安全库存线</th><th>状态</th><th>耗材</th>${isAdmin()?'<th>操作</th>':''}</tr></thead><tbody id="m_body"></tbody></table>`;
   document.getElementById('mainView').innerHTML = html;
   filterMaterials();
 }
@@ -330,8 +331,42 @@ function filterMaterials(){
   });
   document.getElementById('m_body').innerHTML = mats.map(m=>{
     const s = statusOf(m);
-    return `<tr><td>${m.code}</td><td>${m.name}</td><td>${m.spec||''}</td><td>${m.category}</td><td>${m.unit}</td><td>${m.location||''}</td><td style="background:#f5f9ff"><b style="font-size:16px;color:#1a1a1a">${m.stock}</b> <span style="color:#888;font-size:11px">${m.unit||''}</span></td><td style="color:#aaa;font-size:12px">≥ ${m.safety_stock}</td><td><span class="tag ${s.cls}">${s.txt}</span></td>${isAdmin()?`<td><button class="btn sm" onclick="openAdjustModal(${m.id})">📝 调整</button></td>`:''}</tr>`;
-  }).join('') || `<tr><td colspan="${isAdmin()?10:9}" style="text-align:center;color:#999;padding:20px">暂无匹配的物料</td></tr>`;
+    const cons = m.is_consumable ? '<span class="tag danger">耗材</span>' : '<span class="tag">非耗材</span>';
+    return `<tr><td>${m.code}</td><td>${m.name}</td><td>${m.spec||''}</td><td>${m.category}</td><td>${m.unit}</td><td>${m.location||''}</td><td style="background:#f5f9ff"><b style="font-size:16px;color:#1a1a1a">${m.stock}</b> <span style="color:#888;font-size:11px">${m.unit||''}</span></td><td style="color:#aaa;font-size:12px">≥ ${m.safety_stock}</td><td><span class="tag ${s.cls}">${s.txt}</span></td><td>${cons}</td>${isAdmin()?`<td><button class="btn sm" onclick="openAdjustModal(${m.id})">📝 调整</button> <button class="btn sm" onclick="openEditMat(${m.id})">✏️ 编辑</button></td>`:''}</tr>`;
+  }).join('') || `<tr><td colspan="${isAdmin()?11:10}" style="text-align:center;color:#999;padding:20px">暂无匹配的物料</td></tr>`;
+}
+
+// 编辑物料（管理员：改属性，含是否耗材）
+function openEditMat(id){
+  const m = getMaterials().find(x=>x.id===id); if(!m) return;
+  showModal(`<h4>✏️ 编辑物料</h4>
+    <div class="form-row"><label>名称</label><input id="em_name" value="${esc(m.name)}"></div>
+    <div class="form-row"><label>规格型号</label><input id="em_spec" value="${esc(m.spec||'')}"></div>
+    <div class="form-row"><label>类别</label><select id="em_cat">${CATEGORIES.map(c=>`<option ${c===m.category?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="form-row"><label>单位</label><select id="em_unit">${UNITS.map(u=>`<option ${u===m.unit?'selected':''}>${u}</option>`).join('')}</select></div>
+    <div class="form-row"><label>上架位置</label><select id="em_loc">${(LOCATIONS.length?LOCATIONS:['']).map(l=>`<option ${l===m.location?'selected':''}>${l||'未设置'}</option>`).join('')}</select></div>
+    <div class="form-row"><label>安全库存</label><input id="em_safe" type="number" min="0" value="${m.safety_stock||0}"></div>
+    <div class="form-row"><label>是否耗材</label><select id="em_cons">
+      <option value="false" ${!m.is_consumable?'selected':''}>非耗材（出库后自动进入申请老师教室物料库）</option>
+      <option value="true" ${m.is_consumable?'selected':''}>耗材（出库即损耗，不入教室库）</option></select></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitEditMat(${m.id})">保存</button></div>`);
+}
+async function submitEditMat(id){
+  try {
+    const { error } = await sb.from('materials').update({
+      name: (document.getElementById('em_name').value||'').trim(),
+      spec: (document.getElementById('em_spec').value||'').trim(),
+      category: document.getElementById('em_cat').value,
+      unit: document.getElementById('em_unit').value,
+      location: document.getElementById('em_loc').value==='未设置' ? '' : document.getElementById('em_loc').value,
+      safety_stock: parseFloat(document.getElementById('em_safe').value)||0,
+      is_consumable: document.getElementById('em_cons').value==='true'
+    }).eq('id', id);
+    if (error) throw error;
+    await loadSnapshot();
+    toast('已保存物料信息');
+    closeModal(); viewMaterials();
+  } catch(e){ toast(e.message, true); }
 }
 
 // ---------- 库存盘点 / 调整 ----------
@@ -484,6 +519,9 @@ function openAddMat(){
     <div class="form-row"><label>上架位置</label><select id="am_loc">${LOCATIONS.map(l=>`<option>${l}</option>`).join('')}</select></div>
     <div class="form-row"><label>安全库存</label><input id="am_safe" type="number" min="0" value="0"></div>
     <div class="form-row"><label>首笔入库量</label><input id="am_firstqty" type="number" min="0" placeholder="录入后即为当前库存"></div>
+    <div class="form-row"><label>是否耗材</label><select id="am_cons">
+      <option value="false">非耗材（出库后自动进入申请老师教室物料库）</option>
+      <option value="true">耗材（出库即损耗，不进入教室库）</option></select></div>
     <div class="form-row"><label>备注</label><input id="am_remark"></div>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="saveMat()">保存并入库</button></div>`);
 }
@@ -497,7 +535,8 @@ async function saveMat(){
       p_name: name, p_category: document.getElementById('am_cat').value, p_unit: document.getElementById('am_unit').value,
       p_spec: document.getElementById('am_spec').value.trim(), p_location: document.getElementById('am_loc').value,
       p_safety_stock: parseFloat(document.getElementById('am_safe').value)||0, p_remark: document.getElementById('am_remark').value.trim(),
-      p_first_qty: first, p_handler: authName(), p_date: today()
+      p_first_qty: first, p_handler: authName(), p_date: today(),
+      p_is_consumable: document.getElementById('am_cons').value==='true'
     });
     if (error) throw error;
     await loadSnapshot();
@@ -623,7 +662,8 @@ function openOutboundModal(){
   showModal(`<h4>新增出库</h4>
     <div class="form-row"><label>选择物料</label><div class="mat-picker"><input id="ob_search" placeholder="🔍 输入名称/编号关键字" oninput="searchObMat()" autocomplete="off"><div class="results" id="ob_results"></div></div></div>
     <div id="ob_matbox"></div>
-    <div class="form-row"><label>出库类型</label><select id="ob_type">${OUTBOUND_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="form-row"><label>出库类型</label><select id="ob_type" onchange="onObTypeChange()">${OUTBOUND_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="form-row" id="ob_target_row" style="display:none"><label>出库人员（接收老师）</label><select id="ob_target" onchange="document.getElementById('ob_receiver').value=(this.options[this.selectedIndex]||{}).text||''"></select><span class="hint" style="margin:0">选择后物料自动进入该老师「教室物料库」</span></div>
     <div class="form-row"><label>出库数量</label><input id="ob_qty" type="number" min="0" placeholder="请输入数量" oninput="onModalOutQty()"></div>
     <div id="ob_stockbox"></div>
     <div class="form-row"><label>日期</label><input id="ob_date" type="date" value="${today()}"></div>
@@ -631,6 +671,22 @@ function openOutboundModal(){
     <div class="form-row"><label>备注</label><input id="ob_remark"></div>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn red" onclick="submitOutboundModal()">提交出库</button></div>`);
   OB_MAT = null;
+}
+async function onObTypeChange(){
+  const type = document.getElementById('ob_type').value;
+  const row = document.getElementById('ob_target_row');
+  if (type === '调拨出库'){
+    row.style.display = 'flex';
+    const sel = document.getElementById('ob_target');
+    if (!sel.options.length){
+      if (!OB_TEACHERS.length){ try { const { data } = await sb.rpc('list_teachers'); OB_TEACHERS = data||[]; } catch(e){} }
+      sel.innerHTML = OB_TEACHERS.map(t=>`<option value="${esc(t.email)}">${esc(t.real_name||t.email)}${t.role?('（'+esc(t.role)+'）'):''}</option>`).join('');
+    }
+    document.getElementById('ob_receiver').value = (sel.options[sel.selectedIndex]||{}).text || '';
+  } else {
+    row.style.display = 'none';
+    document.getElementById('ob_receiver').value = authName();
+  }
 }
 function searchObMat(){
   const q=(document.getElementById('ob_search').value||'').trim().toLowerCase();
@@ -652,23 +708,46 @@ function onModalOutQty(){
 }
 async function submitOutboundModal(){
   if(!OB_MAT){ toast('请先搜索并选择物料', true); return; }
+  const type = document.getElementById('ob_type').value;
   const qty=parseFloat(document.getElementById('ob_qty').value);
   if(!qty||qty<=0){ toast('请输入有效的出库数量', true); return; }
   if(qty>OB_MAT.stock){ toast('出库数量超过当前库存', true); return; }
+  // 调拨出库必须指定接收老师
+  let outToEmail = null;
+  if (type === '调拨出库'){
+    const sel = document.getElementById('ob_target');
+    outToEmail = sel && sel.value ? sel.value : null;
+    if (!outToEmail){ toast('调拨出库请先选择「出库人员（接收老师）」', true); return; }
+  }
   try {
     const { error } = await sb.rpc('do_outbound', {
-      p_material_id: OB_MAT.id, p_type: document.getElementById('ob_type').value, p_qty: qty,
+      p_material_id: OB_MAT.id, p_type: type, p_qty: qty,
       p_date: document.getElementById('ob_date').value||today(),
-      p_receiver: authName(),
+      p_receiver: document.getElementById('ob_receiver').value || authName(),
       p_purpose: null,
       p_remark: document.getElementById('ob_remark').value.trim() || null,
       p_operator: authName(),
+      p_out_to_email: outToEmail
     });
     if (error) throw error;
+    // 调拨出库：相应物料自动进入接收老师的教室物料库
+    if (type === '调拨出库' && outToEmail){
+      const gi = await sb.rpc('grant_to_teacher', {
+        p_to_email: outToEmail,
+        p_item_name: OB_MAT.name,
+        p_model: OB_MAT.spec || '',
+        p_unit: OB_MAT.unit || '',
+        p_qty: Math.round(qty),
+        p_source: '调拨出库 #' + (OB_MAT.code||'')
+      });
+      if (gi.error) throw gi.error;
+    }
     await loadSnapshot();
     const m=getMaterials().find(x=>x.id===OB_MAT.id);
     const low = m && m.stock < m.safety_stock;
-    toast(m ? ('✅ 出库成功 — ' + m.name + ' 剩余 ' + m.stock + ' ' + (m.unit||'') + (low ? '（已低于安全库存 ' + m.safety_stock + '）' : '')) : '出库成功，库存已更新', !!low);
+    let msg = m ? ('✅ 出库成功 — ' + m.name + ' 剩余 ' + m.stock + ' ' + (m.unit||'') + (low ? '（已低于安全库存 ' + m.safety_stock + '）' : '')) : '出库成功，库存已更新';
+    if (type === '调拨出库' && outToEmail) msg += '（已调入该老师教室物料库）';
+    toast(msg, !!low);
     closeModal(); filterOutbound();
   } catch(e){ toast(e.message, true); }
 }
