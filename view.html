@@ -459,15 +459,17 @@ async function viewTransferV(){
     + '<div class="toolbar" style="margin:10px 0 8px">'
     + '<button class="btn green" onclick="openAddItemModalV()">➕ 登记 / 增加物料</button>'
     + '<button class="btn blue" id="ti_transfer_btn" onclick="openTransferModalV()" disabled>🔄 流转给…（<span id="ti_selcount">0</span>）</button>'
+    + '<button class="btn" id="ti_return_btn" onclick="openReturnModalV()" disabled style="background:#0b8043;color:#fff">📥 归还入库（<span id="ti_retcount">0</span>）</button>'
     + '<input id="ti_search" placeholder="🔍 搜索物品 / 型号" oninput="renderTransferV()" style="padding:7px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;width:200px">'
     + '<button class="btn" onclick="loadTransferV()">↻ 刷新</button>';
   if (admin) html += '<label style="font-size:13px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ti_all" onchange="TI_ALL=this.checked;viewTransferV()"> 查看全校</label>';
   html += '</div>'
+    + '<div style="font-size:12px;color:#666;margin:0 0 8px">💡 <b>非耗材</b>用完后可点「归还入库」退回学校物料仓库，系统自动生成一笔「归还入库」记录并增加库存；<b>耗材不支持归还</b>。</div>'
     + '<table><thead><tr>'
     + '<th style="width:34px"><input type="checkbox" id="ti_chkall" onclick="toggleTiAllV(this.checked)"></th>'
     + '<th>物品名称</th><th>型号</th><th>数量</th><th>单位</th>';
   if (TI_ALL) html += '<th>持有人</th>';
-  html += '<th>来源</th><th>更新时间</th><th>操作</th>'
+  html += '<th>仓库属性</th><th>来源</th><th>更新时间</th><th>操作</th>'
     + '</tr></thead><tbody id="ti_body"></tbody></table>';
   document.getElementById('ti_area').innerHTML = html;
   await loadTransferV();
@@ -475,7 +477,7 @@ async function viewTransferV(){
 
 async function loadTransferV(){
   const body = document.getElementById('ti_body');
-  if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px">加载中…</td></tr>';
+  if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px">加载中…</td></tr>';
   try {
     let q = sb.from('teacher_inventory').select('*');
     if (!TI_ALL) q = q.eq('holder_email', TEACHER.email);
@@ -489,7 +491,7 @@ async function loadTransferV(){
       if (!te) TI_VIEW_TEACHERS = td || [];
     }
   } catch(e){
-    if (body) body.innerHTML = '<tr><td colspan="9" style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</td></tr>';
+    if (body) body.innerHTML = '<tr><td colspan="10" style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</td></tr>';
   }
 }
 
@@ -511,7 +513,9 @@ function renderTransferV(){
   const showHolder = TI_ALL;
   body.innerHTML = rows.length ? rows.map(r=>{
     const cb = '<input type="checkbox" class="ti_chk" value="'+esc(r.id)+'" onchange="updateTiSelV()">';
-    const ops = '<button class="btn sm" onclick="adjustItemV(\''+esc(r.id)+'\')">调整</button> <button class="btn sm red" onclick="deleteItemV(\''+esc(r.id)+'\')">删除</button>';
+    const rs = returnStateV(r);
+    let ops = '<button class="btn sm" onclick="adjustItemV(\''+esc(r.id)+'\')">调整</button> <button class="btn sm red" onclick="deleteItemV(\''+esc(r.id)+'\')">删除</button>';
+    if (rs.ok) ops = '<button class="btn sm" style="background:#0b8043;color:#fff;border-color:#0b8043" onclick="openReturnModalV(\''+esc(r.id)+'\')">📥 归还</button> ' + ops;
     return '<tr data-id="'+esc(r.id)+'">'
       + '<td>'+cb+'</td>'
       + '<td><b>'+esc(r.item_name)+'</b></td>'
@@ -519,18 +523,43 @@ function renderTransferV(){
       + '<td><b>'+r.qty+'</b></td>'
       + '<td>'+esc(r.unit||'')+'</td>'
       + (showHolder?'<td>'+esc(r.holder_name||r.holder_email||'')+'</td>':'')
+      + '<td><span style="color:'+rs.color+';font-size:12px">'+rs.label+'</span></td>'
       + '<td>'+esc(r.source||'—')+'</td>'
       + '<td>'+esc((r.updated_at||'').replace('T',' ').slice(0,16))+'</td>'
       + '<td>'+ops+'</td>'
     + '</tr>';
-  }).join('') : '<tr><td colspan="'+(showHolder?9:8)+'" style="text-align:center;color:#999;padding:20px">'+(TI_ALL?'暂无教室物料记录':'你的教室物料库还是空的，点「登记 / 增加物料」添加')+'</td></tr>';
+  }).join('') : '<tr><td colspan="'+(showHolder?10:9)+'" style="text-align:center;color:#999;padding:20px">'+(TI_ALL?'暂无教室物料记录':'你的教室物料库还是空的，点「登记 / 增加物料」添加')+'</td></tr>';
   updateTiSelV();
 }
 
+// —— 归还入库判定（与后端 return_to_warehouse 匹配规则一致）——
+function normKeyV(s){ return String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,''); }
+function matchWarehouseV(itemName, model){
+  const mats = PR_MATS || [];
+  const n = normKeyV(itemName), md = normKeyV(model);
+  const same = mats.filter(m => normKeyV(m.name) === n);
+  if (!same.length) return null;
+  const exact = same.find(m => normKeyV(m.spec) === md);
+  if (exact) return exact;
+  return same.length === 1 ? same[0] : { _ambiguous: true, name: itemName };
+}
+function returnStateV(r){
+  const m = matchWarehouseV(r.item_name, r.model);
+  if (!m) return { ok:false, label:'仓库未建档', color:'#999', reason:'物料仓库中没有同名物料，无法归还（请联系教务主任建档）' };
+  if (m._ambiguous) return { ok:false, label:'型号不明确', color:'#e8710a', reason:'仓库中有多条同名物料，请先核对规格型号' };
+  if (m.is_consumable) return { ok:false, label:'耗材·不可归还', color:'#d93025', reason:'耗材用完即消耗，不支持归还入库' };
+  return { ok:true, label:'非耗材·可归还', color:'#0b8043', reason:'', mat:m };
+}
+
 function updateTiSelV(){
-  const cnt = document.querySelectorAll('.ti_chk:checked').length;
+  const checked = [...document.querySelectorAll('.ti_chk:checked')];
+  const cnt = checked.length;
   const sc = document.getElementById('ti_selcount'); if(sc) sc.textContent = cnt;
   const btn = document.getElementById('ti_transfer_btn'); if(btn) btn.disabled = cnt===0;
+  const ids = new Set(checked.map(c=>c.value));
+  const retCnt = TI_CACHE.filter(r=>ids.has(r.id) && returnStateV(r).ok).length;
+  const rc = document.getElementById('ti_retcount'); if(rc) rc.textContent = retCnt;
+  const rbtn = document.getElementById('ti_return_btn'); if(rbtn) rbtn.disabled = retCnt===0;
 }
 function toggleTiAllV(v){
   document.querySelectorAll('.ti_chk').forEach(c=>c.checked=v);
@@ -642,6 +671,84 @@ async function submitTransferV(n){
     vtoast('✅ 已流转给 ' + tName);
     await loadTransferV();
   } catch(e){ msg.innerHTML='<span style="color:#e24b4a">流转失败：'+esc(e.message)+'</span>'; }
+}
+
+// 📥 归还入库：把非耗材从教室物料库退回学校物料仓库
+function openReturnModalV(oneId){
+  let items;
+  if (oneId){
+    items = TI_CACHE.filter(r=>r.id===oneId);
+  } else {
+    const ids = new Set([...document.querySelectorAll('.ti_chk:checked')].map(c=>c.value));
+    items = TI_CACHE.filter(r=>ids.has(r.id));
+  }
+  const okItems = [], badItems = [];
+  items.forEach(r=>{ const s = returnStateV(r); (s.ok?okItems:badItems).push({ row:r, state:s }); });
+  if (!okItems.length){
+    vtoast(badItems.length ? ('无可归还物料：'+badItems[0].state.reason) : '请先勾选要归还的物料', true);
+    return;
+  }
+  const fromEmail = isViewAdmin() ? okItems[0].row.holder_email : TEACHER.email;
+  if (okItems.some(x=>x.row.holder_email !== fromEmail)){
+    vtoast('请只选择同一位老师的物料进行归还', true); return;
+  }
+  const rows = okItems.map((x,i)=>{
+    const r = x.row;
+    return '<div class="form-row" style="align-items:center">'
+      + '<label style="width:auto;min-width:170px">'+esc(r.item_name)+(r.model?' ['+esc(r.model)+']':'')+'</label>'
+      + '<input type="number" min="1" max="'+r.qty+'" value="'+r.qty+'" id="rt_qty_'+i+'" style="width:90px"> <span style="color:#888">/ 共 '+r.qty+' '+esc(r.unit||'')+'</span>'
+      + '<span style="color:#0b8043;font-size:12px;margin-left:6px">→ 仓库「'+esc(x.state.mat.name)+'」现有 '+x.state.mat.stock+' '+esc(x.state.mat.unit||'')+'</span>'
+      + '<input type="hidden" id="rt_name_'+i+'" value="'+esc(r.item_name)+'">'
+      + '<input type="hidden" id="rt_model_'+i+'" value="'+esc(r.model||'')+'">'
+      + '<input type="hidden" id="rt_unit_'+i+'" value="'+esc(r.unit||'')+'">'
+      + '</div>';
+  }).join('');
+  const skipped = badItems.length
+    ? '<div style="margin-top:8px;padding:8px 10px;background:#fff4e5;border-left:3px solid #e8710a;font-size:12px;color:#8a4b00">以下 '
+      + badItems.length + ' 项无法归还，已自动跳过：<br>'
+      + badItems.map(x=>'· '+esc(x.row.item_name)+'（'+x.state.reason+'）').join('<br>') + '</div>'
+    : '';
+  showV('<h4>📥 归还入库 · 退回学校物料仓库</h4>'
+    + '<p class="hint" style="margin-left:0">确认后物料将从<b>教室物料库扣减</b>，并在仓库生成一笔<b>「归还入库」</b>记录、库存自动增加。仅<b>非耗材</b>可归还。</p>'
+    + '<div style="margin:8px 0 4px;font-size:13px;color:#555">归还物料及数量：</div>'
+    + rows
+    + '<div class="form-row"><label>归还说明</label><input id="rt_remark" placeholder="如：课程结束退回 / 设备闲置退库" value="课程结束退回"></div>'
+    + skipped
+    + '<input type="hidden" id="rt_from" value="'+esc(fromEmail)+'">'
+    + '<div id="rt_msg" style="font-size:13px;color:#888;min-height:16px;margin-top:6px"></div>'
+    + '<div class="modal-actions"><button class="btn" onclick="closeV()">取消</button><button class="btn green" onclick="submitReturnV('+okItems.length+')">确认归还入库</button></div>');
+}
+async function submitReturnV(n){
+  const fromEmail = document.getElementById('rt_from').value;
+  const remark = (document.getElementById('rt_remark').value||'').trim();
+  const items = [];
+  for (let i=0;i<n;i++){
+    const qty = parseInt(document.getElementById('rt_qty_'+i).value,10);
+    const name = document.getElementById('rt_name_'+i).value;
+    const model = document.getElementById('rt_model_'+i).value;
+    const unit = document.getElementById('rt_unit_'+i).value;
+    if(!qty || qty<=0){ vtoast('「'+name+'」归还数量需大于 0', true); return; }
+    items.push({ item_name:name, model, unit, qty });
+  }
+  const msg = document.getElementById('rt_msg'); msg.textContent='归还入库中…';
+  try {
+    const { data, error } = await sb.rpc('return_to_warehouse', {
+      p_from_email: fromEmail, p_items: items, p_remark: remark || null
+    });
+    if (error) throw error;
+    const res = data || {};
+    const meName = (TEACHER.user_metadata && TEACHER.user_metadata.real_name) || TEACHER.email;
+    const content = '## 📥 物料归还入库\n'
+      + '> **归还人**：' + (res.handler || meName) + '\n'
+      + '> **物料**：' + (res.detail || items.map(r=>r.item_name+' × '+r.qty).join('；')) + '\n'
+      + '> **说明**：' + (remark || '教师归还') + '\n'
+      + '> **时间**：' + new Date().toLocaleString('zh-CN');
+    await pushWecomV(content);
+    closeV();
+    vtoast('✅ 已归还入库 — 共 '+(res.items||items.length)+' 种、'+(res.qty||0)+' 件');
+    await load();
+    await loadTransferV();
+  } catch(e){ msg.innerHTML='<span style="color:#e24b4a">归还失败：'+esc(e.message||e)+'</span>'; }
 }
 
 // 调整 / 删除本人（或教务主任代管）教室物料
