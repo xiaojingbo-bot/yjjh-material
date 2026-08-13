@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260812c</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260813a</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -57,6 +57,12 @@
   .card { background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); min-width: 150px; }
   .card .n { font-size: 24px; font-weight: 700; color: #0c447c; }
   .card .l { font-size: 12px; color: #888; margin-top: 4px; }
+  /* 教师自有物料情况汇总 */
+  .tsum-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 6px 0 16px; }
+  .tsum-card { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+  .tsum-h { font-size: 13px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed #eef1f5; }
+  .tsum-ul { margin: 0; padding-left: 18px; }
+  .tsum-ul li { font-size: 13px; line-height: 1.9; }
   /* 模态 */
   .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 50; }
   .modal-mask.show { display: flex; }
@@ -1323,6 +1329,7 @@ async function viewTransfer(){
       <button class="btn" onclick="loadTransfer()">↻ 刷新</button>
       ${amAdmin?'<label style="font-size:13px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ti_all" onchange="TI_ALL=this.checked;viewTransfer()"> 查看全校</label>':''}
     </div>
+    <div id="ti_summary"></div>
     <table><thead><tr>
       <th style="width:34px"><input type="checkbox" id="ti_chkall" onclick="toggleTiAll(this.checked)"></th>
       <th>物品名称</th><th>型号</th><th>数量</th><th>单位</th>
@@ -1344,6 +1351,7 @@ async function loadTransfer(){
     if (error) throw error;
     TI_CACHE = data || [];
     renderTransfer();
+    renderTeacherSummary();
     if (!TI_VIEW_TEACHERS.length){
       const { data: td, error: te } = await sb.rpc('list_teachers');
       if (!te) TI_VIEW_TEACHERS = td || [];
@@ -1388,6 +1396,35 @@ function renderTransfer(){
     </tr>`;
   }).join('') || `<tr><td colspan="${showHolder?10:9}" style="text-align:center;color:#999;padding:20px">${TI_ALL?'暂无教室物料记录':'你的教室物料库还是空的，点「登记 / 增加物料」添加'}</td></tr>`;
   updateTiSel();
+}
+
+// —— 教师自有物料情况（按老师汇总，仅教务主任查看全校时显示）——
+function renderTeacherSummary(){
+  const box = document.getElementById('ti_summary'); if(!box) return;
+  if (!TI_ALL || !isAdmin()){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='';
+  const map = {};
+  TI_CACHE.forEach(r=>{ const k = r.holder_email || '(未知)'; (map[k] = map[k] || []).push(r); });
+  const keys = Object.keys(map).sort((a,b)=> (map[a][0].holder_name||a).localeCompare(map[b][0].holder_name||b, 'zh'));
+  const kw = ((document.getElementById('ti_tsearch')||{}).value||'').trim().toLowerCase();
+  const blocks = keys.filter(k=>{
+    if(!kw) return true;
+    const nm = (map[k][0].holder_name||'') + ' ' + k;
+    return nm.toLowerCase().includes(kw);
+  }).map(k=>{
+    const items = map[k];
+    const name = items[0].holder_name || k;
+    const kinds = items.length;
+    const total = items.reduce((s,r)=>s+(Number(r.qty)||0),0);
+    const lis = items.map(r=>{
+      const rs = returnState(r);
+      return `<li><b>${esc(r.item_name)}</b>${r.model?` <span style="color:#666">(${esc(r.model)})</span>`:''} ×${r.qty} ${esc(r.unit||'')} <span style="color:${rs.color};font-size:11px">${rs.label}</span></li>`;
+    }).join('');
+    return `<div class="tsum-card"><div class="tsum-h">👤 <b>${esc(name)}</b> <span style="color:#888;font-size:12px">${esc(k)}</span> · ${kinds} 种 / ${total} 件</div><ul class="tsum-ul">${lis}</ul></div>`;
+  }).join('');
+  box.innerHTML = `<h4 style="margin:14px 0 8px">📋 教师自有物料情况（按老师汇总 · 共 ${keys.length} 位老师）</h4>
+    <input id="ti_tsearch" placeholder="🔍 搜索老师姓名 / 邮箱" oninput="renderTeacherSummary()" style="width:220px;margin-bottom:8px">
+    <div class="tsum-wrap">${blocks || '<p style="color:#999">暂无教室物料记录</p>'}</div>`;
 }
 
 // —— 归还入库：判断某条教室物料能否退回仓库（与后端 return_to_warehouse 匹配规则一致）——
