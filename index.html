@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260814h</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260814i</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -297,8 +297,8 @@ function showApp(){
   document.getElementById('loginView').style.display='none';
   document.getElementById('appView').style.display='flex';
   const isAdm = isAdmin();
-  // 全校库存台账仅教务主任/校长可见；教师登录后看不到全校物料，避免越权查看
-  document.getElementById('mi_materials').style.display = isAdm ? 'block' : 'none';
+  // 物料管理（全校库存台账）：教师与教务主任均可见（只读，编辑/新增/删除按钮由 isAdmin() 控制，教师无写权限）
+  document.getElementById('mi_materials').style.display = 'block';
   document.getElementById('backupPanel').style.display = isAdm ? 'block' : 'none';
   document.getElementById('mi_accounts').style.display = isAdm ? 'block' : 'none';
   document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
@@ -308,7 +308,7 @@ function showApp(){
   document.getElementById('mi_transfer').style.display = canWriteTxn() ? 'block' : 'none';
   document.getElementById('mi_outbound').style.display = isAdm ? 'block' : 'none';
   document.getElementById('mi_inbound').style.display = isAdm ? 'block' : 'none';
-  switchView(isAdm ? 'materials' : 'transfer');
+  switchView('materials');
   // 深链支持：?view=requests / ?view=purchase 直接进入对应视图
   const dv = new URLSearchParams(location.search).get('view');
   if (dv && ['materials','inbound','outbound','accounts','requests','purchase','transfer'].includes(dv)) switchView(dv);
