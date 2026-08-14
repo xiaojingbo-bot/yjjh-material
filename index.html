@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260814a</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260814b</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="js/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -24,7 +24,7 @@
   .err { color: #e24b4a; font-size: 13px; min-height: 18px; margin-bottom: 8px; text-align: center; }
   /* 布局 */
   .app { display: flex; min-height: 100vh; }
-  .sidebar { width: 210px; background: #0c447c; color: #fff; padding: 20px 0 64px; flex-shrink: 0; }
+  .sidebar { width: 210px; background: #0c447c; color: #fff; padding: 20px 0; flex-shrink: 0; }
   .sidebar .logo { text-align: center; font-size: 17px; font-weight: 600; padding: 0 16px 18px; border-bottom: 1px solid rgba(255,255,255,.15); }
   .sidebar .logo img { display: block; width: 168px; height: auto; margin: 0 auto 10px; background: #fff; padding: 8px 10px; border-radius: 6px; }
   .sidebar .user { font-size: 12px; color: #b5d4f4; text-align: center; padding: 12px 0; }
@@ -34,13 +34,8 @@
   .sidebar .backup { margin: 16px 16px 0; }
   .sidebar .backup button { width: 100%; padding: 8px; font-size: 12px; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; cursor: pointer; }
   .sidebar .backup button:hover { background: rgba(255,255,255,.28); }
-  .main { flex: 1; padding: 24px 28px 72px; overflow: auto; }
+  .main { flex: 1; padding: 24px 28px; overflow: auto; }
   .main h3 { margin-bottom: 14px; color: #0c447c; }
-  /* 底部菜单：物料看板入口 */
-  #bottomNav { position: fixed; left: 0; right: 0; bottom: 0; height: 52px; background: #fff; border-top: 1px solid #e5e9ef; display: none; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 40; box-shadow: 0 -2px 8px rgba(0,0,0,.05); }
-  #bottomNav .bn-brand { font-size: 12px; color: #8893a3; }
-  #bottomNav .bn-btn { padding: 9px 18px; background: #1d9e75; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
-  #bottomNav .bn-btn:hover { background: #0f6e56; }
   .hint { color: #888; font-size: 13px; margin: 0 0 14px; line-height: 1.6; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
   .toolbar input, .toolbar select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
@@ -289,7 +284,6 @@ function showApp(){
   document.getElementById('sideUser').textContent = authName() + '（' + (AUTH.role || '未设角色') + '）';
   document.getElementById('loginView').style.display='none';
   document.getElementById('appView').style.display='flex';
-  document.getElementById('bottomNav').style.display='flex';
   document.getElementById('backupPanel').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_accounts').style.display = isAdmin() ? 'block' : 'none';
   document.getElementById('mi_requests').style.display = canWriteTxn() ? 'block' : 'none';
@@ -1939,11 +1933,5 @@ function ensureXLSX(){ if (typeof XLSX==='undefined'){ toast('Excel 组件未加
 })();
 document.getElementById('modalMask').addEventListener('click', e=>{ if(e.target.id==='modalMask') closeModal(); });
 </script>
-
-  <!-- 底部菜单：物料看板入口（同域跳转，企业微信 webview 无需可信域名） -->
-  <div id="bottomNav">
-    <span class="bn-brand">优佳宏锦 · 物料管理</span>
-    <button class="bn-btn" onclick="location.href='view.html?key=yjjh2026'">📊 物料看板</button>
-  </div>
 </body>
 </html>
