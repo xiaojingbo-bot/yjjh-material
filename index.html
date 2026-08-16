@@ -238,7 +238,7 @@ function askEntry(){
     <p class="hint" style="margin-left:0">当前登录账号：<b>${who}</b>。请选择进入「管理系统」或查看「物料看板」（只读看板）。</p>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal(); showApp();">💼 进入管理系统</button>
-      <button class="btn green" onclick="window.open('view.html?key=yjjh2026&from=login&v=20260816c','_blank'); closeModal();">📊 查看物料看板</button>
+      <button class="btn green" onclick="window.open('view.html?key=yjjh2026&from=login&t='+Date.now(),'_blank'); closeModal();">📊 查看物料看板</button>
     </div>`);
 }
 async function doLogin(){
