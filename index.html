@@ -1436,13 +1436,13 @@ function renderTransfer(){
   // 教务主任：按老师下拉过滤（选了具体老师就只看该老师的）
   const tf = ((document.getElementById('ti_teacher_filter')||{}).value||'').trim();
   if (tf) rows = rows.filter(r => r.holder_email === tf);
+  // 耗材不显示在教室物料库表格中（耗材用完即消耗，不计入在库资产）
+  rows = rows.filter(r => { const m = matchWarehouse(r.item_name, r.model); return !m || !m.is_consumable; });
 
   const cards = document.getElementById('ti_cards');
   if (cards){
-    // 统计卡片只计入非耗材（耗材用完即消耗，不计入教室在库资产）
-    const nonCons = rows.filter(r => { const m = matchWarehouse(r.item_name, r.model); return m && !m.is_consumable; });
-    const kinds = nonCons.length;
-    const totalQty = nonCons.reduce((s,r)=>s+(Number(r.qty)||0),0);
+    const kinds = rows.length;
+    const totalQty = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
     cards.innerHTML = `
       <div class="card"><div class="n">${kinds}</div><div class="l">物料种类</div></div>
       <div class="card"><div class="n">${totalQty}</div><div class="l">在库总数量</div></div>`;
