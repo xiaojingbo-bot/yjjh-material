@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料看板 · 优佳宏锦职业培训学校 v20260814h</title>
+<title>物料看板 · 优佳宏锦职业培训学校 v20260816a</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -48,9 +48,22 @@
   #vtoast.show { opacity:.95; } #vtoast.err { background:#e24b4a; }
   .stock-box { background:#f3f8ff; border:1px solid #cfe0ff; color:#2f6fed; border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; }
   .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  /* 授权前遮罩：登录校验通过前隐藏看板内容，避免闪现 */
+  #guard { position:fixed; inset:0; background:#f0f2f5; z-index:200; display:flex; align-items:center; justify-content:center; color:#888; font-size:14px; }
 </style>
+<script>
+  // 早期同步拦截：未携带 ?from=login 时，在 body 绘制前立即跳回登录页，杜绝看板闪现
+  (function(){
+    try {
+      if (new URLSearchParams(location.search).get('from') !== 'login') {
+        location.replace('index.html');
+      }
+    } catch(e) {}
+  })();
+</script>
 </head>
 <body>
+  <div id="guard">验证中…</div>
   <div class="head">
     <h1>优佳宏锦职业培训学校</h1>
     <p>物料库存 · 教师只读视图（实时同步）</p>
@@ -158,6 +171,7 @@ function render(d){
     let session;
     try { const { data: d } = await sb.auth.getSession(); session = d.session; } catch(e) {}
     if (!session) { location.href = 'index.html'; return; }
+    const g = document.getElementById('guard'); if (g) g.remove();
     load(false);
     initAuth();
     setInterval(()=>load(false), 30000);
