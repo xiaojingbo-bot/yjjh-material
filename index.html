@@ -1439,8 +1439,10 @@ function renderTransfer(){
 
   const cards = document.getElementById('ti_cards');
   if (cards){
-    const kinds = rows.length;
-    const totalQty = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+    // 统计卡片只计入非耗材（耗材用完即消耗，不计入教室在库资产）
+    const nonCons = rows.filter(r => { const m = matchWarehouse(r.item_name, r.model); return m && !m.is_consumable; });
+    const kinds = nonCons.length;
+    const totalQty = nonCons.reduce((s,r)=>s+(Number(r.qty)||0),0);
     cards.innerHTML = `
       <div class="card"><div class="n">${kinds}</div><div class="l">物料种类</div></div>
       <div class="card"><div class="n">${totalQty}</div><div class="l">在库总数量</div></div>`;
