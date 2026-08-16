@@ -429,6 +429,10 @@ function openAdjustModal(id){
     </div>
     <div id="adj_stockbox"></div>
     <div class="form-row"><label>实盘数量</label><input id="adj_new" type="number" min="0" placeholder="盘点后的实际库存数量" oninput="onAdjStock()"></div>
+    <div class="form-row"><label>是否耗材</label><select id="adj_cons">
+      <option value="">不修改（保持原值）</option>
+      <option value="false">非耗材（出库后自动进入申请老师教室物料库）</option>
+      <option value="true">耗材（出库即损耗，不进入教室库）</option></select></div>
     <div class="form-row"><label>调整原因</label><input id="adj_reason" placeholder="如：盘点差异、损耗、报废、录入更正等" style="width:100%"></div>
     <div class="form-row"><label>经办人</label><input id="adj_handler" placeholder="经办人" style="width:120px" value="${AUTH.real_name||''}"></div>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn blue" onclick="submitAdjustModal()">保存调整</button></div>`);
@@ -443,7 +447,7 @@ function searchAdjMat(){
   box.innerHTML=hits.map(m=>`<div class="item" onclick="pickAdjMat(${m.id})"><span class="nm">${m.name}</span><span class="cd">${m.code}</span><span class="st">库存 ${m.stock}${m.unit}</span></div>`).join('');
   box.style.display='block';
 }
-function pickAdjMat(id){ ADJ_MAT=getMaterials().find(m=>m.id===id); document.getElementById('adj_search').value=ADJ_MAT.name; document.getElementById('adj_results').style.display='none'; onAdjStock(); }
+function pickAdjMat(id){ ADJ_MAT=getMaterials().find(m=>m.id===id); document.getElementById('adj_search').value=ADJ_MAT.name; document.getElementById('adj_results').style.display='none'; document.getElementById('adj_cons').value = ADJ_MAT.is_consumable ? 'true' : 'false'; onAdjStock(); }
 function onAdjStock(){
   const box=document.getElementById('adj_stockbox');
   if(!ADJ_MAT){ box.innerHTML=''; return; }
@@ -465,7 +469,8 @@ async function submitAdjustModal(){
   try {
     const { error } = await sb.rpc('do_adjust', {
       p_material_id: ADJ_MAT.id, p_new_stock: nv, p_reason: reason,
-      p_handler: document.getElementById('adj_handler').value.trim() || authName()
+      p_handler: document.getElementById('adj_handler').value.trim() || authName(),
+      p_is_consumable: (function(){ const v=document.getElementById('adj_cons').value; if(v==='') return null; return v==='true'; })()
     });
     if (error) throw error;
     await loadSnapshot();
