@@ -144,7 +144,7 @@
 <script>
 // ---------- 常量 ----------
 const LOCATIONS = [];
-['左','中','右'].forEach(s => { for (let i=1;i<=5;i++) LOCATIONS.push(s+i+'层'); });
+for (let s=1;s<=5;s++) for (let l=1;l<=5;l++) for (let sp=1;sp<=2;sp++) LOCATIONS.push(s+'-'+l+'-'+sp);
 const INBOUND_TYPES = ['采购入库','退货入库','调拨入库','归还入库','其他'];
 const OUTBOUND_TYPES = ['领用出库','调拨出库','损耗出库','其他'];
 let OB_TEACHERS = [];
@@ -611,8 +611,8 @@ function downloadInboundTemplate(){
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
     ['物料名称','规格型号','入库上架位置','入库类型','数量','经办人','备注'],
-    ['示例伺服驱动器','SDR-220V','左1层','采购入库',10,'张三','示例行请删除'],
-    ['示例新物料','X-001','中2层','采购入库',5,'张三','不存在将自动新建']
+    ['示例伺服驱动器','SDR-220V','1-1-1','采购入库',10,'张三','示例行请删除'],
+    ['示例新物料','X-001','3-2-2','采购入库',5,'张三','不存在将自动新建']
   ]);
   const loc = "'"+LOCATIONS.join(",")+"'";
   const typ = "'"+INBOUND_TYPES.join(",")+"'";
@@ -621,7 +621,7 @@ function downloadInboundTemplate(){
   const ws2 = XLSX.utils.aoa_to_sheet([
     ['填写说明'],
     ['1. 无需填写物料编号，系统按"物料名称"自动匹配；匹配不到会自动新建并生成编号。'],
-    ['2. 入库上架位置请从下拉选择（左/中/右 × 1~5层）。'],
+    ['2. 入库上架位置请从下拉选择，格式为"货架-层-空间"（如 5-1-2 表示第5货架第1层第2空间）。'],
     ['3. 入库类型请从下拉选择。'],
     ['4. 数量须大于 0。'],
     ['5. 日期由系统自动取导入当天，无需填写。'],
