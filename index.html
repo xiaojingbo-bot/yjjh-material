@@ -8,7 +8,7 @@
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260818c';
+  var CUR = '20260818d';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -632,18 +632,19 @@ function downloadInboundTemplate(){
   ensureXLSX();
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
-    ['物料名称','规格型号','入库上架位置','物料类型','入库类型','数量','经办人','备注'],
-    ['示例伺服驱动器','SDR-220V','1-1-1','非耗材','采购入库',10,'张三','示例行请删除'],
-    ['示例新物料','X-001','3-2-2','耗材','采购入库',5,'张三','不存在将自动新建']
+    ['物料名称','规格型号','单位','入库上架位置','物料类型','入库类型','数量','经办人','备注'],
+    ['示例伺服驱动器','SDR-220V','台','1-1-1','非耗材','采购入库',10,'张三','示例行请删除'],
+    ['示例新物料','X-001','个','3-2-2','耗材','采购入库',5,'张三','不存在将自动新建']
   ]);
   const loc = "'"+NUM_LOC.join(",")+"'";
   const typ = "'"+INBOUND_TYPES.join(",")+"'";
-  ws['!dataValidations'] = { 'C3:C1000':{type:'list',allowBlank:true,formula1:loc}, 'D3:D1000':{type:'list',allowBlank:true,formula1:"'耗材,非耗材'"}, 'E3:E1000':{type:'list',allowBlank:true,formula1:typ} };
+  ws['!dataValidations'] = { 'D3:D1000':{type:'list',allowBlank:true,formula1:loc}, 'E3:E1000':{type:'list',allowBlank:true,formula1:"'耗材,非耗材'"}, 'F3:F1000':{type:'list',allowBlank:true,formula1:typ} };
   XLSX.utils.book_append_sheet(wb, ws, '入库批量导入');
   const ws2 = XLSX.utils.aoa_to_sheet([
     ['填写说明'],
     ['1. 无需填写物料编号，系统按"物料名称"自动匹配；匹配不到会自动新建并生成编号。'],
-    ['2. 入库上架位置请填数字编码，如 5-1-2 表示第5货架第1层第2空间（系统会自动转为 5架-1层-2）。'],
+    ['2. 单位请填写物料计量单位（如 台、个、米、卷 等）。'],
+    ['3. 入库上架位置请填数字编码，如 5-1-2 表示第5货架第1层第2空间（系统会自动转为 5架-1层-2）。'],
     ['3. 入库类型请从下拉选择。'],
     ['4. 数量须大于 0。'],
     ['5. 日期由系统自动取导入当天，无需填写。'],
@@ -671,20 +672,21 @@ async function doImportInbound(){
       if (!r || r.every(v=>v==null||v==='')) continue;
       total++;
       const name=(r[0]!=null?String(r[0]):'').trim();
-      const qty=Number(r[5]);
+      const qty=Number(r[6]);
       if(!name){ errors.push(`第${i+1}行：物料名称为空`); continue; }
       if(!(qty>0)){ errors.push(`第${i+1}行：数量无效`); continue; }
       try {
-        const consRaw = r[3]!=null?String(r[3]).trim():'';
+        const consRaw = r[4]!=null?String(r[4]).trim():'';
         const { error } = await sb.rpc('import_inbound_row', {
           p_name: name,
           p_spec: r[1]!=null?String(r[1]).trim():'',
-          p_loc: (r[2]!=null?String(r[2]).trim():'') || '',
+          p_unit: r[2]!=null?String(r[2]).trim():'',
+          p_loc: (r[3]!=null?String(r[3]).trim():'') || '',
           p_is_consumable: consRaw==='耗材' ? true : false,
-          p_type: (r[4]!=null?String(r[4]).trim():'') || '采购入库',
+          p_type: (r[5]!=null?String(r[5]).trim():'') || '采购入库',
           p_qty: qty,
-          p_handler: (r[6]!=null?String(r[6]).trim():'') || authName(),
-          p_remark: r[7]!=null?String(r[7]).trim():'',
+          p_handler: (r[7]!=null?String(r[7]).trim():'') || authName(),
+          p_remark: r[8]!=null?String(r[8]).trim():'',
           p_date: today()
         });
         if (error) throw error;
