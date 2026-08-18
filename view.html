@@ -8,48 +8,48 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #1f2329; padding: 14px; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #1f2329; padding: 14px; font-size: 16px; }
   .head { background: linear-gradient(135deg,#0c447c,#1d9e75); color:#fff; border-radius: 12px; padding: 18px 16px; margin-bottom: 14px; }
-  .head h1 { font-size: 18px; }
-  .head p { font-size: 12px; opacity: .9; margin-top: 4px; }
-  .bar { display:flex; align-items:center; justify-content:space-between; margin: 4px 2px 12px; font-size:12px; color:#888; }
-  .bar button { padding:6px 12px; border:none; border-radius:7px; background:#0c447c; color:#fff; font-size:13px; }
+  .head h1 { font-size: 24px; }
+  .head p { font-size: 15px; opacity: .9; margin-top: 4px; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin: 4px 2px 12px; font-size:14px; color:#888; }
+  .bar button { padding:6px 12px; border:none; border-radius:7px; background:#0c447c; color:#fff; font-size:15px; }
   .cards { display:flex; gap:10px; margin-bottom:14px; }
   .card { flex:1; background:#fff; border-radius:10px; padding:14px 10px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-  .card .n { font-size:22px; font-weight:700; color:#0c447c; }
-  .card .l { font-size:11px; color:#888; margin-top:3px; }
+  .card .n { font-size:28px; font-weight:700; color:#0c447c; }
+  .card .l { font-size:13px; color:#888; margin-top:3px; }
   .card.warn .n { color:#e08a00; }
   section { background:#fff; border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-  section h2 { font-size:15px; color:#0c447c; margin-bottom:10px; }
+  section h2 { font-size:19px; color:#0c447c; margin-bottom:10px; }
   table { width:100%; border-collapse:collapse; }
-  th,td { padding:8px 6px; font-size:12px; text-align:left; border-bottom:1px solid #eee; }
+  th,td { padding:9px 8px; font-size:15px; text-align:left; border-bottom:1px solid #eee; }
   th { color:#888; font-weight:600; background:#fafbfc; }
-  .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
+  .tag { display:inline-block; padding:3px 10px; border-radius:10px; font-size:13px; }
   .tag.ok { background:#e6f7ee; color:#1d9e75; }
   .tag.warn { background:#fff3e0; color:#e08a00; }
   .tag.danger { background:#fdeaea; color:#e24b4a; }
-  .empty { text-align:center; color:#999; font-size:13px; padding:18px; }
-  .err { background:#fdeaea; color:#e24b4a; padding:14px; border-radius:10px; font-size:13px; }
-  .foot { text-align:center; color:#aaa; font-size:11px; margin-top:8px; }
+  .empty { text-align:center; color:#999; font-size:16px; padding:18px; }
+  .err { background:#fdeaea; color:#e24b4a; padding:14px; border-radius:10px; font-size:16px; }
+  .foot { text-align:center; color:#aaa; font-size:13px; margin-top:8px; }
   /* 教师登录 / 修改密码 */
-  .btn { padding:8px 14px; border:none; border-radius:7px; font-size:13px; cursor:pointer; background:#0c447c; color:#fff; }
+  .btn { padding:8px 14px; border:none; border-radius:7px; font-size:15px; cursor:pointer; background:#0c447c; color:#fff; }
   .btn.blue { background:#2f6fed; } .btn.green { background:#1d9e75; } .btn.red { background:#e24b4a; }
-  .btn.sm { padding:4px 10px; font-size:12px; }
+  .btn.sm { padding:4px 10px; font-size:14px; }
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; }
   .modal-mask.show { display:flex; }
   .modal { background:#fff; border-radius:12px; padding:22px 24px; width:420px; max-width:92vw; box-shadow:0 10px 40px rgba(0,0,0,.3); }
   .modal h4 { margin-bottom:14px; color:#0c447c; }
   .modal .hint { margin-left:0; }
   .form-row { display:flex; align-items:center; margin-bottom:12px; }
-  .form-row label { width:80px; color:#555; font-size:13px; flex-shrink:0; }
-  .form-row input { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:7px; font-size:13px; }
+  .form-row label { width:80px; color:#555; font-size:15px; flex-shrink:0; }
+  .form-row input { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:7px; font-size:15px; }
   .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
-  #vtoast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:8px; font-size:14px; z-index:99; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #vtoast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:8px; font-size:17px; z-index:99; opacity:0; transition:opacity .25s; pointer-events:none; }
   #vtoast.show { opacity:.95; } #vtoast.err { background:#e24b4a; }
-  .stock-box { background:#f3f8ff; border:1px solid #cfe0ff; color:#2f6fed; border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; }
+  .stock-box { background:#f3f8ff; border:1px solid #cfe0ff; color:#2f6fed; border-radius:8px; padding:8px 10px; font-size:14px; line-height:1.6; }
   .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   /* 授权前遮罩：登录校验通过前隐藏看板内容，避免闪现 */
-  #guard { position:fixed; inset:0; background:#f0f2f5; z-index:200; display:flex; align-items:center; justify-content:center; color:#888; font-size:14px; }
+  #guard { position:fixed; inset:0; background:#f0f2f5; z-index:200; display:flex; align-items:center; justify-content:center; color:#888; font-size:17px; }
 </style>
 <script>
   // 早期同步拦截：未携带 ?from=login 时，在 body 绘制前立即跳回登录页，杜绝看板闪现
