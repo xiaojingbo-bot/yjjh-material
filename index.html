@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260818e</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260819d</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260818e';
+  var CUR = '20260819d';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -989,8 +989,20 @@ async function loadRequests(){
   try {
     const { data, error } = await sb.from('outbound_requests').select('*').order('created_at',{ascending:false});
     if (error) throw error;
-    const st = { pending:'<span class="tag warn">待处理</span>', handled:'<span class="tag ok">已处理</span>', cancelled:'<span class="tag">已取消</span>' };
-    body.innerHTML = (data||[]).map(r=>`<tr>
+    const st = { pending:'<span class="tag warn">待处理</span>', handled:'<span class="tag ok">已通过</span>', rejected:'<span class="tag" style="background:#fdeaea;color:#e24b4a">已驳回</span>', cancelled:'<span class="tag" style="background:#eee;color:#888">已取消</span>' };
+    body.innerHTML = (data||[]).map(r=>{
+      const isOwner = (r.applicant_email||'') === (AUTH.email||'');
+      let ops = '';
+      if (r.status === 'pending') {
+        if (amAdmin) {
+          ops = `<button class="btn sm green" onclick="showApproveDialog(${r.id})">审批</button> <button class="btn sm red" onclick="cancelRequest(${r.id})">驳回</button>`;
+        } else if (isOwner) {
+          ops = `<button class="btn sm" onclick="selfCancelRequest(${r.id})">取消申请</button>`;
+        }
+      } else {
+        ops = '<span style="color:#999">—</span>';
+      }
+      return `<tr>
       <td>${esc((r.created_at||'').replace('T',' ').slice(0,16))}</td>
       <td>${esc(r.applicant_name||r.applicant_email||'')}</td>
       <td>${esc(r.material_name||'')}</td>
@@ -1000,19 +1012,63 @@ async function loadRequests(){
       <td>${esc(r.req_date||'—')}</td>
       <td>${esc(r.reason||'')}</td>
       <td>${st[r.status]||r.status}</td>
-      ${isAdmin()?`<td>${r.status==='pending'?'<button class="btn sm green" onclick="processOutbound('+r.id+')">出库</button> <button class="btn sm" onclick="markHandled('+r.id+')">标记</button>':'<span style="color:#999">—</span>'}</td>`:''}
-    </tr>`).join('') || '<tr><td colspan="'+(isAdmin()?10:9)+'" style="text-align:center;color:#999;padding:20px">暂无申请记录</td></tr>';
+      ${amAdmin?`<td>${ops}</td>`:(isOwner?`<td>${ops}</td>`:'')}
+    </tr>`;).join('') || '<tr><td colspan="'+(isAdmin()?10:9)+'" style="text-align:center;color:#999;padding:20px">暂无申请记录</td></tr>';
   } catch(e){ body.innerHTML = '<tr><td colspan="'+(isAdmin()?10:9)+'" style="color:#e24b4a">加载失败：'+esc(e.message)+'</td></tr>'; }
 }
-async function markHandled(id){
+// ---- 主任驳回申请（将「标记」改为「驳回」）----
+async function cancelRequest(id){
+  if(!confirm('确认驳回该出库申请？\n\n驳回后申请人将看到「已驳回」状态，且该申请不会被执行出库。')) return;
   try {
-    const { error } = await sb.from('outbound_requests').update({ status:'handled', handled_at:new Date().toISOString(), handled_by: AUTH.real_name||'' }).eq('id', id);
+    const { error } = await sb.from('outbound_requests').update({
+      status:'rejected', handled_at:new Date().toISOString(),
+      handled_by: AUTH.real_name||authName(), handle_note: '主任驳回'
+    }).eq('id', id);
     if (error) throw error;
-    toast('已标记为处理');
+    toast('已驳回该申请');
     await loadRequests();
   } catch(e){ toast(e.message, true); }
 }
-async function processOutbound(id){
+
+// ---- 教师自行取消（待处理状态 + 本人）----
+async function selfCancelRequest(id){
+  if(!confirm('确认取消该出库申请？\n\n取消后将通知教务主任，且该申请不会被执行。')) return;
+  try {
+    const { data: req } = await sb.from('outbound_requests').select('*').eq('id', id).maybeSingle();
+    const { error } = await sb.from('outbound_requests').update({
+      status:'cancelled', handled_at:new Date().toISOString(),
+      handled_by: (AUTH.real_name||AUTH.email||'')+'（自行取消）', handle_note: '申请人自行取消'
+    }).eq('id', id);
+    if (error) throw error;
+    // 推送企业微信通知教务主任
+    if (req) {
+      const content = '## ❌ 出库申请已取消（教师自行取消）\n'
+        + '> **申请人**：' + esc(req.applicant_name || req.applicant_email || '未知') + '\n'
+        + '> **物资**：' + esc(req.material_name || '') + '\n'
+        + '> **规格**：' + esc(req.material_spec || '—') + '\n'
+        + '> **数量**：' + req.qty + ' ' + esc(req.unit || '') + '\n'
+        + '> **取消时间**：' + new Date().toLocaleString('zh-CN') + '\n'
+        + '> 该申请已由申请人自行取消，无需处理。';
+      await pushWecom(content);
+    }
+    toast('已取消申请，已通知教务主任');
+    await loadRequests();
+  } catch(e){ toast(e.message, true); }
+}
+
+// ---- 主任审批：先弹选择框（通过 / 驳回）----
+function showApproveDialog(id){
+  showModal(`<h4>📋 审批出库申请 #${id}</h4>
+    <p style="font-size:14px;color:#555;margin-bottom:14px">请选择处理方式：</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn green" style="padding:12px 28px;font-size:15px" onclick="closeModal();approveRequest(${id})">✅ 通过并出库</button>
+      <button class="btn red" style="padding:12px 28px;font-size:15px" onclick="closeModal();rejectRequestFromDialog(${id})">❌ 驳回</button>
+    </div>
+    <p style="font-size:12px;color:#999;text-align:center;margin-top:12px">通过 = 扣减库存 + （非耗材）计入教室库<br>驳回 = 申请标记为「已驳回」，不执行任何出库操作</p>`);
+}
+
+// ---- 主任确认通过（原 processOutbound 逻辑）----
+async function approveRequest(id){
   try {
     const { data: req, error: e1 } = await sb.from('outbound_requests').select('*').eq('id', id).maybeSingle();
     if (e1) throw new Error('查询申请失败：'+e1.message);
@@ -1064,6 +1120,20 @@ async function processOutbound(id){
     await loadSnapshot();
   } catch(e){ toast('❌ 出库失败：'+e.message, true); }
 }
+
+// ---- 主任从审批对话框驳回 ----
+async function rejectRequestFromDialog(id){
+  try {
+    const { error } = await sb.from('outbound_requests').update({
+      status:'rejected', handled_at:new Date().toISOString(),
+      handled_by: AUTH.real_name||authName(), handle_note: '主任审批驳回'
+    }).eq('id', id);
+    if (error) throw error;
+    toast('已驳回该申请');
+    await loadRequests();
+  } catch(e){ toast(e.message, true); }
+}
+
 async function loadWecom(){
   try {
     const { data, error } = await sb.from('system_config').select('value').eq('key','wecom_webhook_url').maybeSingle();
