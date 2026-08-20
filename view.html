@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料看板 · 优佳宏锦职业培训学校 v20260820e</title>
+<title>物料看板 · 优佳宏锦职业培训学校 v20260820f</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -75,6 +75,17 @@
     .form-row input, .form-row select { width:100%; }
     th,td { padding:8px 6px; font-size:14px; white-space:nowrap; }
     .tbl-wrap table { min-width:560px; }
+    /* 主物料表：竖屏卡片式布局（无需横滑，纵向阅读） */
+    .tbl-wrap table.mt-table { min-width:0; }
+    .mt-table thead { display:none; }
+    .mt-table tbody { display:block; }
+    .mt-table tr { display:block; border:1px solid #e8ebee; border-radius:10px; padding:10px 12px; margin-bottom:8px; background:#fff; }
+    .mt-table td { display:block; border:none; padding:2px 0; font-size:15px; white-space:normal; }
+    .mt-table td[data-l]::before { content:attr(data-l)'：'; color:#999; font-size:13px; margin-right:4px; }
+    .mt-table td.c-name { font-size:18px; font-weight:600; color:#1f2329; }
+    .mt-table td.c-name::before { content:''; display:none; }
+    .mt-table td.c-stock { font-size:17px; }
+    .mt-table td.c-stock b { font-size:20px; }
   }
 </style>
 <script>
@@ -103,7 +114,7 @@
       <span id="mt_count" style="font-size:13px;color:#888;white-space:nowrap"></span>
     </div>
     <div class="tbl-wrap">
-    <table><thead><tr><th>编号</th><th>名称</th><th>规格</th><th>位置</th><th>库存</th><th>状态</th><th>耗材</th></thead><tbody id="mt"></tbody></table>
+    <table class="mt-table"><thead><tr><th>名称</th><th>规格</th><th>位置</th><th>库存</th></tr></thead><tbody id="mt"></tbody></table>
     </div>
   </section>
   <div class="foot">数据由教务主任在管理端维护，本页每 30 秒自动刷新</div>
@@ -156,10 +167,11 @@ function renderMatsTable(){
   const all = PR_MATS || [];
   const rows = q ? all.filter(m => [m.code,m.name,m.spec,m.location].some(v=>(v||'').toLowerCase().includes(q))) : all;
   tb.innerHTML = rows.length ? rows.map(m=>{
-    const s = statusOf(m.stock, m.safety_stock||0);
-    const isc = m.is_consumable;
-    return `<tr><td>${esc(m.code)}</td><td>${esc(m.name)}</td><td>${esc(m.spec)}</td><td>${esc(m.location)}</td><td><b>${m.stock}</b></td><td><span class="tag ${s.c}">${s.t}</span></td><td>${isc?'<span class="tag warn">是</span>':'<span style="color:#999">否</span>'}</td></tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty">未找到匹配的物料</td></tr>';
+    const stock = Number(m.stock)||0;
+    const safe = Number(m.safety_stock)||0;
+    const stockColor = stock<=0 ? '#e24b4a' : (stock<safe ? '#e08a00' : '#0c447c');
+    return `<tr><td data-l="名称" class="c-name">${esc(m.name)}</td><td data-l="规格">${esc(m.spec)||'—'}</td><td data-l="位置">${esc(m.location)||'—'}</td><td data-l="库存" class="c-stock"><b style="color:${stockColor}">${stock}</b> <span style="color:#888;font-size:13px">${esc(m.unit||'')}</span></td></tr>`;
+  }).join('') : '<tr><td colspan="4" class="empty">未找到匹配的物料</td></tr>';
   const cnt = document.getElementById('mt_count');
   if(cnt) cnt.textContent = q ? (rows.length+' / '+all.length+' 项') : (all.length+' 项');
 }
