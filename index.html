@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260820c</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260820d</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260820c';
+  var CUR = '20260820d';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -146,6 +146,7 @@
       <div class="menu-item" data-view="requests" id="mi_requests" onclick="switchView('requests')" style="display:none">📨 出库申请</div>
       <div class="menu-item" data-view="purchase" id="mi_purchase" onclick="switchView('purchase')" style="display:none">🛒 采购申请</div>
       <div class="menu-item" data-view="transfer" id="mi_transfer" onclick="switchView('transfer')" style="display:none">🔄 物料流转</div>
+      <div class="menu-item" data-view="stats" id="mi_stats" onclick="switchView('stats')">📉 耗材损耗统计</div>
       <div class="menu-item" data-view="accounts" id="mi_accounts" onclick="switchView('accounts')" style="display:none">👤 账户管理</div>
       <div class="backup" id="backupPanel">
         <button onclick="backupData()">⬇ 备份数据</button>
@@ -334,7 +335,7 @@ function showApp(){
   switchView('materials');
   // 深链支持：?view=requests / ?view=purchase 直接进入对应视图
   const dv = new URLSearchParams(location.search).get('view');
-  if (dv && ['materials','inbound','outbound','accounts','requests','purchase','transfer'].includes(dv)) switchView(dv);
+  if (dv && ['materials','inbound','outbound','accounts','requests','purchase','transfer','stats'].includes(dv)) switchView(dv);
 }
 
 // ---------- 视图切换 ----------
@@ -351,6 +352,107 @@ function switchView(v){
   else if (v==='requests') viewRequests();
   else if (v==='purchase') viewPurchase();
   else if (v==='transfer') viewTransfer();
+  else if (v==='stats') viewStats();
+}
+
+// 数值格式化：整数不带小数，小数最多 2 位去尾零
+function fmtQ(n){ n = Number(n)||0; if (Number.isInteger(n)) return String(n); return n.toFixed(2).replace(/\.?0+$/,''); }
+
+// ---------- 耗材损耗统计（按月 / 按申请老师）----------
+async function viewStats(){
+  const html = `<h3>耗材损耗统计 · 按月 / 按申请老师</h3>
+    <p class="hint">统计「耗材」类出库（系统标记为损耗出库，不进入教室物料库）的实际损耗数量，按月份与申请老师汇总，便于对比各老师月度损耗量大小。</p>
+    <div class="toolbar">
+      <label style="margin-right:4px">年份</label>
+      <select id="st_year" onchange="loadConsumableStats()"><option value="">全部年份</option></select>
+      <button class="btn" onclick="loadConsumableStats()">🔄 刷新</button>
+    </div>
+    <h4 style="margin:16px 0 10px;font-size:15px">📊 损耗量透视（老师 × 月份）</h4>
+    <div id="st_pivot"><p class="hint" style="padding:14px 0">加载中…</p></div>
+    <h4 style="margin:18px 0 10px;font-size:15px">📋 明细记录</h4>
+    <div id="st_detail"></div>`;
+  document.getElementById('mainView').innerHTML = html;
+  await loadConsumableStats();
+}
+async function loadConsumableStats(){
+  const pivot = document.getElementById('st_pivot');
+  const detail = document.getElementById('st_detail');
+  const ysel = document.getElementById('st_year');
+  try {
+    const [obRes, matRes] = await Promise.all([
+      sb.from('outbound').select('id,material_id,type,qty,date,receiver,purpose,remark').order('date',{ascending:false}),
+      sb.from('materials').select('id,name,category,unit,is_consumable')
+    ]);
+    if (obRes.error) throw obRes.error;
+    if (matRes.error) throw matRes.error;
+    const matMap = {};
+    (matRes.data||[]).forEach(m=>{ matMap[m.id] = m; });
+    // 判定为「耗材出库」：物料 is_consumable=true，或出库类型标记为「损耗出库」
+    const rows = (obRes.data||[]).filter(r=>{
+      const m = (r.material_id!=null) ? matMap[r.material_id] : null;
+      return (m && m.is_consumable) || (r.type === '损耗出库');
+    });
+    if (!rows.length){
+      pivot.innerHTML = '<p class="hint" style="padding:16px 0">暂无耗材出库记录。</p>';
+      detail.innerHTML = '';
+      return;
+    }
+    // 年份下拉
+    const years = Array.from(new Set(rows.map(r=>(r.date||'').slice(0,4)).filter(Boolean))).sort();
+    const curYear = ysel ? ysel.value : '';
+    if (ysel) ysel.innerHTML = '<option value="">全部年份</option>' + years.map(y=>`<option value="${y}">${y}年</option>`).join('');
+    const filt = curYear ? rows.filter(r=>(r.date||'').slice(0,4)===curYear) : rows;
+    // 聚合：teachers[老师][月份] += qty
+    const teachers = {}, months = {};
+    filt.forEach(r=>{
+      const t = ((r.receiver||'').trim()) || '未署名';
+      const mon = (r.date||'').slice(0,7);
+      const q = parseFloat(r.qty)||0;
+      if (!teachers[t]) teachers[t] = {};
+      teachers[t][mon] = (teachers[t][mon]||0) + q;
+      months[mon] = true;
+    });
+    const monthArr = Object.keys(months).sort();
+    const teacherArr = Object.keys(teachers).sort((a,b)=>a.localeCompare(b,'zh'));
+    // 透视表
+    let h = `<div style="overflow-x:auto"><table><thead><tr><th>申请老师</th>${monthArr.map(m=>`<th>${m}</th>`).join('')}<th>合计</th></tr></thead><tbody>`;
+    const grand = {};
+    teacherArr.forEach(t=>{
+      let tot = 0;
+      h += `<tr><td><b>${esc(t)}</b></td>`;
+      monthArr.forEach(m=>{
+        const v = teachers[t][m]||0;
+        if (v) grand[m] = (grand[m]||0) + v;
+        tot += v;
+        h += `<td>${v?fmtQ(v):''}</td>`;
+      });
+      h += `<td><b>${fmtQ(tot)}</b></td></tr>`;
+    });
+    h += `<tr style="background:#f3f7ff"><th>合计</th>`;
+    let gt = 0;
+    monthArr.forEach(m=>{ const v = grand[m]||0; gt += v; h += `<th>${v?fmtQ(v):''}</th>`; });
+    h += `<th>${fmtQ(gt)}</th></tr>`;
+    h += `</tbody></table></div>`;
+    pivot.innerHTML = h;
+    // 明细
+    let d = `<div style="overflow-x:auto"><table><thead><tr><th>日期</th><th>申请老师</th><th>物料</th><th>类别</th><th>数量</th><th>用途/备注</th></tr></thead><tbody>`;
+    filt.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(r=>{
+      const m = (r.material_id!=null) ? matMap[r.material_id] : null;
+      const unit = (m && m.unit) ? m.unit : '';
+      d += `<tr>
+        <td>${esc(r.date||'')}</td>
+        <td>${esc(r.receiver||'')}</td>
+        <td>${esc(m?m.name:('物料#'+r.material_id))}</td>
+        <td>${esc((m&&m.category)?m.category:'—')}</td>
+        <td><b>${fmtQ(parseFloat(r.qty)||0)}</b> ${esc(unit)}</td>
+        <td>${esc(r.purpose||r.remark||'')}</td>
+      </tr>`;
+    });
+    d += `</tbody></table></div>`;
+    detail.innerHTML = d;
+  } catch(e){
+    pivot.innerHTML = '<p style="color:#e24b4a;padding:16px">加载失败：'+esc(e.message)+'</p>';
+  }
 }
 
 // ---------- 物料管理（只读台账）----------
