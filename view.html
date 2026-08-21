@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料看板 · 优佳宏锦职业培训学校 v20260820f</title>
+<title>物料看板 · 优佳宏锦职业培训学校 v20260821a</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -180,9 +180,21 @@ function renderMatsTable(){
   // 看板是登录后的只读视图，凭教务主任 / 教师账号登录后方可查看；
   // 未登录 → 跳转到管理端登录页。数据安全由 Supabase 行级权限（RLS）保障：登录用户仅可读、不可写。
   (async function () {
+    const u = new URL(location.href);
+    const fromLogin = u.searchParams.get('from') === 'login';
     let session = null;
     try { const { data: d } = await sb.auth.getSession(); session = d && d.session; } catch(e) {}
     if (!session) { location.replace('index.html'); return; }
+    // 仅「从管理系统点『查看物料看板』」（带 from=login）进入才保留会话；
+    // 其余直接 / 重新打开看板的情况，强制退出会话并回到登录页，
+    // 确保「无论之前进的是哪个模块，下一次进入都先看到登录界面」。
+    if (!fromLogin) {
+      try { await sb.auth.signOut(); } catch(e){}
+      location.replace('index.html');
+      return;
+    }
+    // 抹掉地址栏的 from=login，避免浏览器恢复标签页时绕过登录
+    try { history.replaceState(null, '', 'view.html?key=yjjh2026&t=' + Date.now()); } catch(e){}
     // 已登录 → 展示只读看板
     const g = document.getElementById('guard'); if (g) g.remove();
     const r = document.getElementById('real'); if (r) r.style.display = '';
