@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260821b</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260824a</title>
 <meta http-equiv="Cache-Control" content="public, max-age=600">
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260821b';
+  var CUR = '20260824a';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -103,6 +103,8 @@
   .form-row input, .form-row select { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
   .stock-box { margin-top: 6px; padding: 10px 12px; border-radius: 8px; background: #f6f8fa; font-size: 13px; line-height: 1.7; }
+  .cat-group-row td { border-bottom: 2px solid #c5d4f0 !important; }
+  .btn.green { background: #1d9e75; color: #fff; border-color: #1d9e75; }
   .stock-box.warn { background: #fdeaea; color: #e24b4a; }
   .stock-box.ok { background: #eaf6ec; border: 1px solid #cbe7d1; }
   .mat-picker { position: relative; flex: 1; }
@@ -476,7 +478,7 @@ function viewMaterials(){
       <button class="btn" onclick="refreshMaterials()" id="m_refresh_btn">↻ 刷新</button>
       ${isAdmin()?'<button class="btn" style="margin-left:auto" onclick="openAdjustModal()">📊 库存盘点 / 调整</button>      <button class="btn blue" onclick="viewAdjustLog()">📋 盘点记录</button>':''}
     </div>
-    <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th style="background:#eef4ff;color:#2f6fed">当前库存</th><th style="color:#999;font-weight:400">安全库存线</th><th>状态</th><th>耗材</th>${isAdmin()?'<th>操作</th>':''}</tr></thead><tbody id="m_body"></tbody></table>`;
+    <table><thead><tr><th>编号</th><th>名称</th><th>规格型号</th><th>类别</th><th>单位</th><th>上架位置</th><th style="background:#eef4ff;color:#2f6fed">当前库存</th><th style="color:#999;font-weight:400">安全库存线</th><th>状态</th><th>耗材</th>${isAdmin()?'<th>管理</th>':'<th>操作</th>'}</tr></thead><tbody id="m_body"></tbody></table>`;
   document.getElementById('mainView').innerHTML = html;
   filterMaterials();
 }
@@ -494,16 +496,45 @@ async function refreshMaterials(){
 function filterMaterials(){
   const q = (document.getElementById('m_search').value||'').trim().toLowerCase();
   const st = document.getElementById('m_status').value;
-  const mats = getMaterials().filter(m=>{
+  let mats = getMaterials().filter(m=>{
     const hit = !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || (m.spec||'').toLowerCase().includes(q);
     const s = statusOf(m); const hit2 = !st || s.cls===st;
     return hit && hit2;
   });
-  document.getElementById('m_body').innerHTML = mats.map(m=>{
-    const s = statusOf(m);
-    const cons = m.is_consumable ? '<span class="tag danger">耗材</span>' : '<span class="tag">非耗材</span>';
-    return `<tr><td>${m.code}</td><td>${m.name}</td><td>${m.spec||''}</td><td>${m.category}</td><td>${m.unit}</td><td>${m.location||''}</td><td style="background:#f5f9ff"><b style="font-size:16px;color:#1a1a1a">${m.stock}</b> <span style="color:#888;font-size:11px">${m.unit||''}</span></td><td style="color:#aaa;font-size:12px">≥ ${m.safety_stock}</td><td><span class="tag ${s.cls}">${s.txt}</span></td><td>${cons}</td>${isAdmin()?`<td><button class="btn sm" onclick="openAdjustModal(${m.id})">📝 调整</button> <button class="btn sm" onclick="openEditMat(${m.id})">✏️ 编辑</button></td>`:''}</tr>`;
-  }).join('') || `<tr><td colspan="${isAdmin()?11:10}" style="text-align:center;color:#999;padding:20px">暂无匹配的物料</td></tr>`;
+  // 按类别分组排序（同类内按名称排）
+  mats.sort((a,b)=>(a.category||'zzz其他').localeCompare(b.category||'zzz其他') || a.name.localeCompare(b.name));
+  // 按类别分组
+  const groups = {};
+  mats.forEach(m => { const c = m.category || '其他'; if(!groups[c]) groups[c]=[]; groups[c].push(m); });
+  const groupNames = Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+  // 渲染：组标题 + 行
+  let html = '';
+  for (const cat of groupNames) {
+    html += `<tr class="cat-group-row"><td colspan="${isAdmin()?11:10}" style="background:#f0f4ff;font-weight:700;color:#1a56db;padding:6px 12px;font-size:14px">📁 ${esc(cat)}（${groups[cat].length} 项）</td></tr>`;
+    html += groups[cat].map(m=>{
+      const s = statusOf(m);
+      const cons = m.is_consumable ? '<span class="tag danger">耗材</span>' : '<span class="tag">非耗材</span>';
+      const adminOps = isAdmin()?`<td><button class="btn sm" onclick="openAdjustModal(${m.id})">📝 调整</button> <button class="btn sm" onclick="openEditMat(${m.id})">✏️ 编辑</button></td>`:'';
+      const teacherOps = !isAdmin()?`<td><button class="btn sm green" onclick="quickRequest(${m.id})">📤 申请出库</button></td>`:'';
+      return `<tr><td>${m.code}</td><td>${m.name}</td><td>${m.spec||''}</td><td>${m.category}</td><td>${m.unit}</td><td>${m.location||''}</td><td style="background:#f5f9ff"><b style="font-size:16px;color:#1a1a1a">${m.stock}</b> <span style="color:#888;font-size:11px">${m.unit||''}</span></td><td style="color:#aaa;font-size:12px">≥ ${m.safety_stock}</td><td><span class="tag ${s.cls}">${s.txt}</span></td><td>${cons}</td>${adminOps}${teacherOps}</tr>`;
+    }).join('');
+  }
+  document.getElementById('m_body').innerHTML = html || `<tr><td colspan="${isAdmin()?11:10}" style="text-align:center;color:#999;padding:20px">暂无匹配的物料</td></tr>`;
+}
+// 快捷申请出库：从物料列表直接点「申请出库」，预填该物料
+function quickRequest(matId){
+  const m = getMaterials().find(x=>x.id===matId); if(!m) return;
+  REQ_MAT = m;
+  showModal(`<h4>📤 申请出库 — ${esc(m.name)}</h4>
+    <div class="stock-box" style="margin-bottom:12px">已选：<b>${esc(m.name)}</b> [${esc(m.code)}] ｜ 类别：${esc(m.category||'—')} ｜ 当前库存 <b>${m.stock}</b> ${esc(m.unit||'')} ${m.is_consumable?'<span class="tag danger" style="margin-left:6px">耗材</span>':''}</div>
+    <div class="form-row"><label>出库类型</label><select id="rq_type">${OUTBOUND_TYPES.map(t=>`<option${t==='损耗出库'&&m.is_consumable?' selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="form-row"><label>申请数量</label><input id="rq_qty" type="number" min="0" placeholder="请输入数量" value="1" oninput="onModalReqQty()"></div>
+    <div id="rq_stockbox"></div>
+    <div class="form-row"><label>期望日期</label><input id="rq_date" type="date" value="${today()}"></div>
+    <div class="form-row"><label>用途说明</label><input id="rq_reason" placeholder="用途说明（如：期末试卷打印）"></div>
+    <div class="form-row"><label>备注</label><input id="rq_remark"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitRequestModal()">提交申请</button></div>`);
+  onModalReqQty();
 }
 
 // 编辑物料（管理员：改属性，含是否耗材）
