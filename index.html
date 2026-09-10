@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260824a</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260910a</title>
 <meta http-equiv="Cache-Control" content="public, max-age=600">
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260824a';
+  var CUR = '20260910a';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -533,7 +533,8 @@ function quickRequest(matId){
     <div class="form-row"><label>期望日期</label><input id="rq_date" type="date" value="${today()}"></div>
     <div class="form-row"><label>用途说明</label><input id="rq_reason" placeholder="用途说明（如：期末试卷打印）"></div>
     <div class="form-row"><label>备注</label><input id="rq_remark"></div>
-    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitRequestModal()">提交申请</button></div>`);
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" id="rq_submit_btn" onclick="submitRequestModal()">提交申请</button></div>
+    <div id="rq_confirm" style="display:none"></div>`);
   onModalReqQty();
 }
 
@@ -1058,7 +1059,8 @@ function openRequestModal(){
     <div class="form-row"><label>期望日期</label><input id="rq_date" type="date" value="${today()}"></div>
     <div class="form-row"><label>用途说明</label><input id="rq_reason" placeholder="用途说明（如：期末试卷打印）"></div>
     <div class="form-row"><label>备注</label><input id="rq_remark"></div>
-    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" onclick="submitRequestModal()">提交申请</button></div>`);
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn green" id="rq_submit_btn" onclick="submitRequestModal()">提交申请</button></div>
+    <div id="rq_confirm" style="display:none"></div>`);
   REQ_MAT = null;
 }
 function searchReqMat(){
@@ -1092,6 +1094,44 @@ async function submitRequestModal(){
   const date=document.getElementById('rq_date').value||null;
   const reason=document.getElementById('rq_reason').value.trim()||null;
   const remark=document.getElementById('rq_remark').value.trim()||null;
+  // 弹出确认栏：防止系统延迟时误以为没提交而重复点击
+  const bar=document.getElementById('rq_confirm');
+  if(!bar){ return doSubmitRequest(); } // 兜底：无确认栏容器则直接提交
+  bar.innerHTML = `<div style="margin-top:6px;padding:14px;border:1px solid #f0c36d;background:#fff8e1;border-radius:10px">
+      <div style="font-weight:700;color:#b45309;margin-bottom:8px">📋 请核对出库申请信息</div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">物料</span><b>${esc(REQ_MAT.name)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">编号</span><span>${esc(REQ_MAT.code||'—')}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">类型</span><span>${esc(type)}${REQ_MAT.is_consumable?' <span class="tag danger">耗材</span>':''}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">数量</span><b style="color:#0c447c">${qty} ${esc(REQ_MAT.unit||'')}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">当前库存</span><span>${REQ_MAT.stock} ${esc(REQ_MAT.unit||'')}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">期望日期</span><span>${date||'—'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">用途</span><span style="text-align:right;max-width:62%">${esc(reason||'（未填写）')}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #eee"><span style="color:#888">备注</span><span style="text-align:right;max-width:62%">${esc(remark||'—')}</span></div>
+      <div style="margin:10px 0 4px;font-size:12px;color:#b45309">⚠️ 提交后将立即通知教务主任企业微信，且短时间内不可撤销，请确认无误。</div>
+      <div class="modal-actions" style="margin-top:8px">
+        <button class="btn" onclick="hideConfirmBar()">返回修改</button>
+        <button class="btn green" id="rq_confirm_btn" onclick="doSubmitRequest()">确认提交</button>
+      </div>
+    </div>`;
+  bar.style.display='block';
+  const submitBtn=document.getElementById('rq_submit_btn'); if(submitBtn) submitBtn.style.display='none';
+}
+function hideConfirmBar(){
+  const bar=document.getElementById('rq_confirm');
+  if(bar){ bar.style.display='none'; bar.innerHTML=''; }
+  const submitBtn=document.getElementById('rq_submit_btn'); if(submitBtn) submitBtn.style.display='';
+}
+async function doSubmitRequest(){
+  const btn=document.getElementById('rq_confirm_btn');
+  if(btn){ btn.disabled=true; btn.textContent='提交中…'; }
+  if(!REQ_MAT){ toast('请先选择物料', true); if(btn){btn.disabled=false;btn.textContent='确认提交';} return; }
+  const qty=parseFloat(document.getElementById('rq_qty').value);
+  if(!qty||qty<=0){ toast('请输入有效的申请数量', true); if(btn){btn.disabled=false;btn.textContent='确认提交';} return; }
+  if(qty > (REQ_MAT.stock||0)){ toast('申请数量超过当前库存', true); if(btn){btn.disabled=false;btn.textContent='确认提交';} return; }
+  const type=document.getElementById('rq_type').value;
+  const date=document.getElementById('rq_date').value||null;
+  const reason=document.getElementById('rq_reason').value.trim()||null;
+  const remark=document.getElementById('rq_remark').value.trim()||null;
   try {
     const { data: ins, error } = await sb.from('outbound_requests').insert({
       material_id: REQ_MAT.id, material_name: REQ_MAT.name, material_spec: REQ_MAT.spec||null,
@@ -1117,7 +1157,7 @@ async function submitRequestModal(){
     closeModal();
     toast(pushed ? '申请已提交，教务主任企业微信已收到通知' : '申请已提交（未配置企业微信通知）', !pushed);
     await loadRequests();
-  } catch(e){ toast('失败：'+e.message, true); }
+  } catch(e){ toast('失败：'+e.message, true); if(btn){ btn.disabled=false; btn.textContent='确认提交'; } }
 }
 async function loadRequests(){
   const body = document.getElementById('rq_body');
