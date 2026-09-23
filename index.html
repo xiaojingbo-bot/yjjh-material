@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物料管理系统 · 优佳宏锦职业培训学校 v20260910a</title>
+<title>物料管理系统 · 优佳宏锦职业培训学校 v20260923a</title>
 <meta http-equiv="Cache-Control" content="public, max-age=600">
 <!-- 自动破缓存：拉取带时间戳的 version.json，版本不符则自动用新地址重载整页（解决企业微信 webview 顽固缓存） -->
 <script>
 (function(){
-  var CUR = '20260910a';
+  var CUR = '20260923a';
   try {
     var u = new URL(location.href);
     if (u.searchParams.get('v') === CUR) return; // 已是新版本，无需重载
@@ -1708,8 +1708,7 @@ function renderTransfer(){
   // 教务主任：按老师下拉过滤（选了具体老师就只看该老师的）
   const tf = ((document.getElementById('ti_teacher_filter')||{}).value||'').trim();
   if (tf) rows = rows.filter(r => r.holder_email === tf);
-  // 耗材不显示在教室物料库表格中（耗材用完即消耗，不计入在库资产）
-  rows = rows.filter(r => { const m = matchWarehouse(r.item_name, r.model); return !m || !m.is_consumable; });
+  // 注：耗材也照常显示在教室物料库（实物确实在教室里），仅「归还入库」按钮对耗材不开放（见 returnState）
 
   const cards = document.getElementById('ti_cards');
   if (cards){
@@ -1898,20 +1897,31 @@ async function submitAddItem(){
   const msg = document.getElementById('ti_msg'); msg.textContent='保存中…';
   try {
     const me = AUTH.user.email;
-    const { data: ex, error: e1 } = await sb.from('teacher_inventory')
-      .select('id,qty').eq('holder_email', me).eq('item_name', name).eq('model', model).maybeSingle();
-    if (e1) throw e1;
-    if (ex){
-      const { error: e2 } = await sb.from('teacher_inventory').update({ qty: Number(ex.qty)+qty, updated_at:new Date().toISOString() }).eq('id', ex.id);
-      if (e2) throw e2;
-    } else {
-      const { error: e3 } = await sb.from('teacher_inventory').insert({
-        holder_email: me, holder_name: AUTH.real_name||'', item_name: name, model, unit, qty, source
+    let rpcOk = false;
+    try {
+      // 优先走 SECURITY DEFINER RPC：原子累加库存 + 写「手工登记」流转日志
+      const { error } = await sb.rpc('manual_register_item', {
+        p_holder_email: me, p_item_name: name, p_model: model, p_unit: unit, p_qty: qty, p_source: source
       });
-      if (e3) throw e3;
+      if (error) throw error;
+      rpcOk = true;
+    } catch(rpcErr){
+      // RPC 尚未部署时兜底：直接累加/写入 teacher_inventory（与旧逻辑一致，保证登记一定成功）
+      const { data: ex, error: e1 } = await sb.from('teacher_inventory')
+        .select('id,qty').eq('holder_email', me).eq('item_name', name).eq('model', model).maybeSingle();
+      if (e1) throw e1;
+      if (ex){
+        const { error: e2 } = await sb.from('teacher_inventory').update({ qty: Number(ex.qty)+qty, updated_at:new Date().toISOString() }).eq('id', ex.id);
+        if (e2) throw e2;
+      } else {
+        const { error: e3 } = await sb.from('teacher_inventory').insert({
+          holder_email: me, holder_name: AUTH.real_name||'', item_name: name, model, unit, qty, source
+        });
+        if (e3) throw e3;
+      }
     }
     closeModal();
-    toast('已保存到我的教室物料库');
+    toast(rpcOk ? '已登记，并记入流转日志' : '已保存到我的教室物料库');
     await loadTransfer();
   } catch(e){ msg.innerHTML='<span style="color:#e24b4a">保存失败：'+esc(e.message)+'</span>'; }
 }
